@@ -1,0 +1,1084 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LexDocs — Gestión de Escritos Legales</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Crimson+Pro:ital,wght@0,400;0,600;1,400&display=swap');
+
+  :root {
+    --bg:            #0c0e14;
+    --surface:       #13151d;
+    --surface-2:     #191c27;
+    --surface-3:     #1f2230;
+    --border:        #272b3d;
+    --border-mid:    #313654;
+    --border-hi:     #3d4266;
+    --text:          #dde1ef;
+    --text-muted:    #7a80a0;
+    --text-dim:      #4a5070;
+    --accent:        #5a67f2;
+    --accent-lt:     #7b87f5;
+    --accent-glow:   rgba(90,103,242,.14);
+    --yellow:        #e8a020;
+    --yellow-bg:     rgba(232,160,32,.07);
+    --yellow-border: rgba(232,160,32,.22);
+    --green:         #0ea271;
+    --green-bg:      rgba(14,162,113,.07);
+    --green-border:  rgba(14,162,113,.22);
+    --red-bg:        rgba(220,60,60,.08);
+  }
+
+  *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    font-family: 'Inter', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    font-size: 13.5px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── SVG ICON HELPER ───────────────────── */
+  .ico { display:inline-flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .ico svg { display:block; }
+
+  /* ═══════════════════════════════════════
+     LOGIN
+  ══════════════════════════════════════ */
+  #login-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:
+      radial-gradient(ellipse 70% 45% at 50% -10%, rgba(90,103,242,.13) 0%, transparent 65%),
+      var(--bg);
+  }
+
+  .login-card {
+    width: 400px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 44px 36px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.55);
+  }
+
+  .login-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 30px;
+  }
+
+  .login-brand-mark {
+    width: 34px; height: 34px;
+    background: var(--accent);
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .login-brand-name {
+    font-family: 'Crimson Pro', Georgia, serif;
+    font-size: 22px;
+    font-weight: 600;
+    letter-spacing: -.2px;
+    color: var(--text);
+  }
+
+  .login-brand-name span { color: var(--text-muted); font-weight: 400; }
+
+  .login-heading { font-size: 18px; font-weight: 600; margin-bottom: 5px; }
+  .login-sub { font-size: 12.5px; color: var(--text-muted); margin-bottom: 28px; line-height: 1.5; }
+
+  .login-error {
+    background: var(--red-bg);
+    border: 1px solid rgba(220,60,60,.28);
+    color: #f08080;
+    border-radius: 7px;
+    padding: 9px 13px;
+    font-size: 12.5px;
+    margin-bottom: 14px;
+    display: none;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .field { margin-bottom: 16px; }
+
+  .field label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    margin-bottom: 7px;
+  }
+
+  .field input {
+    width: 100%;
+    padding: 10px 13px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13.5px;
+    outline: none;
+    transition: border-color .18s, box-shadow .18s;
+  }
+
+  .field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+  .btn-primary {
+    width: 100%;
+    padding: 11px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-family: inherit;
+    font-size: 13.5px;
+    font-weight: 600;
+    cursor: pointer;
+    margin-top: 6px;
+    transition: background .18s, transform .1s;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+
+  .btn-primary:hover { background: var(--accent-lt); }
+  .btn-primary:active { transform: scale(.99); }
+
+  /* ═══════════════════════════════════════
+     APP SHELL
+  ══════════════════════════════════════ */
+  #app-screen { display: none; min-height: 100vh; flex-direction: column; }
+
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    height: 56px;
+    padding: 0 28px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 200;
+  }
+
+  .hdr-left { display: flex; align-items: center; gap: 10px; }
+
+  .hdr-mark {
+    width: 28px; height: 28px;
+    background: var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .hdr-brand {
+    font-family: 'Crimson Pro', Georgia, serif;
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -.2px;
+  }
+
+  .hdr-sep { width: 1px; height: 18px; background: var(--border); margin: 0 2px; }
+
+  .hdr-section { font-size: 12.5px; color: var(--text-muted); }
+
+  .hdr-right { display: flex; align-items: center; gap: 12px; }
+
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    padding: 4px 13px 4px 5px;
+  }
+
+  .u-avatar {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .u-avatar.sol { background: rgba(90,103,242,.18); color: var(--accent-lt); }
+  .u-avatar.rev { background: rgba(14,162,113,.18); color: #2dd4a0; }
+
+  .u-name { font-size: 12.5px; font-weight: 500; }
+  .u-role { font-size: 11px; color: var(--text-muted); }
+
+  .btn-logout {
+    display: flex; align-items: center; gap: 7px;
+    padding: 6px 13px;
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: all .18s;
+  }
+
+  .btn-logout:hover { border-color: var(--border-mid); color: var(--text); background: var(--surface-2); }
+
+  main { flex: 1; padding: 28px 32px; max-width: 1220px; width: 100%; margin: 0 auto; }
+
+  /* ═══════════════════════════════════════
+     UPLOAD CARD
+  ══════════════════════════════════════ */
+  .upload-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    padding: 24px 28px;
+    margin-bottom: 28px;
+  }
+
+  .card-hdr { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+
+  .card-hdr-icon {
+    width: 30px; height: 30px;
+    background: var(--accent-glow);
+    border: 1px solid rgba(90,103,242,.2);
+    border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+  }
+
+  .card-hdr-title { font-size: 14px; font-weight: 600; }
+  .card-hdr-sub { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+
+  .upload-form { display: grid; grid-template-columns: 1fr 1fr auto; gap: 12px; align-items: end; }
+
+  .ff label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .55px;
+    margin-bottom: 6px;
+  }
+
+  .ff input[type="text"] {
+    width: 100%;
+    padding: 9px 12px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    outline: none;
+    transition: border-color .18s, box-shadow .18s;
+  }
+
+  .ff input[type="text"]:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+  .file-pick {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: var(--surface-2);
+    border: 1px dashed var(--border-mid);
+    border-radius: 7px;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-size: 12.5px;
+    transition: all .18s;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .file-pick:hover { border-color: var(--accent); color: var(--text); background: var(--accent-glow); }
+  .file-pick.active { border-style: solid; border-color: var(--accent); color: var(--accent-lt); }
+
+  #file-input { display: none; }
+
+  .btn-upload {
+    display: flex; align-items: center; gap: 7px;
+    padding: 9px 20px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 7px;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .18s;
+  }
+
+  .btn-upload:hover { background: var(--accent-lt); }
+
+  .upload-hint {
+    margin-top: 12px;
+    padding: 8px 13px;
+    background: var(--accent-glow);
+    border: 1px solid rgba(90,103,242,.18);
+    border-radius: 7px;
+    font-size: 12px;
+    color: #9ba6fa;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  /* ═══════════════════════════════════════
+     REVISOR BANNER
+  ══════════════════════════════════════ */
+  .rev-banner {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    padding: 18px 24px;
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .rev-banner-icon {
+    width: 38px; height: 38px;
+    background: rgba(14,162,113,.1);
+    border: 1px solid rgba(14,162,113,.22);
+    border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .rev-banner-text h3 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .rev-banner-text p { font-size: 12.5px; color: var(--text-muted); }
+
+  .rev-stats { margin-left: auto; display: flex; gap: 24px; }
+  .stat { text-align: center; }
+  .stat-n { font-size: 24px; font-weight: 700; line-height: 1; }
+  .stat-l { font-size: 10.5px; color: var(--text-muted); margin-top: 3px; text-transform: uppercase; letter-spacing: .4px; }
+  .c-yellow { color: var(--yellow); }
+  .c-green  { color: var(--green); }
+
+  /* ═══════════════════════════════════════
+     TABLES
+  ══════════════════════════════════════ */
+  .tables-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+
+  .t-section { background: var(--surface); border: 1px solid var(--border); border-radius: 11px; overflow: hidden; }
+
+  .t-head {
+    padding: 15px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+    background: var(--surface-2);
+  }
+
+  .t-head-left { display: flex; align-items: center; gap: 9px; }
+
+  .pulse {
+    width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+  }
+
+  .pulse-y { background: var(--yellow); box-shadow: 0 0 5px rgba(232,160,32,.55); }
+  .pulse-g { background: var(--green);  box-shadow: 0 0 5px rgba(14,162,113,.55); }
+
+  .t-title { font-size: 12.5px; font-weight: 600; }
+
+  .t-badge {
+    font-size: 10.5px; font-weight: 700;
+    padding: 2px 8px; border-radius: 9px;
+  }
+
+  .badge-y { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow-border); }
+  .badge-g { background: var(--green-bg);  color: var(--green);  border: 1px solid var(--green-border); }
+
+  table { width: 100%; border-collapse: collapse; }
+
+  thead th {
+    padding: 9px 16px;
+    text-align: left;
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .45px;
+    color: var(--text-dim);
+    background: var(--surface-3);
+    border-bottom: 1px solid var(--border);
+  }
+
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .12s; }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: rgba(255,255,255,.018); }
+  tbody td { padding: 11px 16px; font-size: 12.5px; vertical-align: middle; }
+
+  .doc-cell { display: flex; align-items: center; gap: 9px; }
+
+  .doc-thumb {
+    width: 30px; height: 34px;
+    border-radius: 4px;
+    border: 1px solid var(--border-mid);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .doc-thumb-y { background: var(--yellow-bg); }
+  .doc-thumb-g { background: var(--green-bg); }
+
+  .doc-name { font-weight: 500; font-size: 12.5px; color: var(--text); line-height: 1.35; }
+  .doc-file { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+  .s-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 9px; border-radius: 11px;
+    font-size: 11px; font-weight: 600;
+  }
+
+  .s-pill-y { background: var(--yellow-bg); color: var(--yellow); border: 1px solid var(--yellow-border); }
+  .s-pill-g { background: var(--green-bg);  color: var(--green);  border: 1px solid var(--green-border); }
+
+  .author-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 8px; border-radius: 9px;
+    background: var(--surface-3); border: 1px solid var(--border);
+    font-size: 11px; color: var(--text-muted);
+  }
+
+  .muted { font-size: 11.5px; color: var(--text-muted); }
+
+  /* ── Action buttons ── */
+  .act-cell { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+
+  .btn-view {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px;
+    background: var(--accent-glow);
+    border: 1px solid rgba(90,103,242,.28);
+    border-radius: 6px;
+    color: var(--accent-lt);
+    font-family: inherit; font-size: 11.5px; font-weight: 500;
+    cursor: pointer; white-space: nowrap; transition: all .18s;
+  }
+
+  .btn-view:hover { background: rgba(90,103,242,.22); border-color: rgba(90,103,242,.5); }
+
+  .btn-dl {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    font-family: inherit; font-size: 11.5px; font-weight: 500;
+    cursor: pointer; white-space: nowrap; transition: all .18s;
+  }
+
+  .btn-dl:hover { border-color: var(--border-hi); color: var(--text); background: var(--surface-3); }
+
+  .btn-mark {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 4px 10px;
+    background: var(--green-bg);
+    border: 1px solid var(--green-border);
+    border-radius: 6px;
+    color: var(--green);
+    font-family: inherit; font-size: 11.5px; font-weight: 600;
+    cursor: pointer; white-space: nowrap; transition: all .18s;
+  }
+
+  .btn-mark:hover { background: rgba(14,162,113,.14); border-color: rgba(14,162,113,.45); }
+
+  .no-file { font-size: 11px; color: var(--text-dim); font-style: italic; }
+
+  .empty {
+    text-align: center; padding: 32px 16px; color: var(--text-dim);
+    display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+
+  .empty-label { font-size: 12.5px; }
+
+  /* ═══════════════════════════════════════
+     MODAL
+  ══════════════════════════════════════ */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.75);
+    z-index: 500;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+    backdrop-filter: blur(5px);
+  }
+
+  .modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border-mid);
+    border-radius: 13px;
+    width: 100%; max-width: 900px; max-height: 92vh;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 28px 70px rgba(0,0,0,.65);
+  }
+
+  .modal-hdr {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+    flex-shrink: 0;
+  }
+
+  .modal-hdr-info { flex: 1; min-width: 0; }
+  .modal-hdr-title { font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .modal-hdr-sub { font-size: 11.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+
+  .modal-hdr-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+  .btn-modal-dl {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 7px 14px;
+    background: var(--accent);
+    color: #fff;
+    border: none; border-radius: 7px;
+    font-family: inherit; font-size: 12.5px; font-weight: 600;
+    cursor: pointer; text-decoration: none;
+    transition: background .18s;
+  }
+
+  .btn-modal-dl:hover { background: var(--accent-lt); }
+
+  .btn-close {
+    width: 30px; height: 30px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: all .18s; flex-shrink: 0;
+  }
+
+  .btn-close:hover { background: var(--surface-3); color: var(--text); }
+
+  .modal-body {
+    flex: 1; overflow: auto;
+    background: var(--surface-2);
+    display: flex; align-items: flex-start; justify-content: center;
+  }
+
+  .modal-body iframe { width: 100%; height: 74vh; border: none; display: block; }
+  .modal-body img { max-width: 100%; max-height: 74vh; object-fit: contain; display: block; margin: auto; padding: 16px; }
+
+  .no-preview {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 10px; padding: 60px 24px; text-align: center; width: 100%;
+  }
+
+  .no-preview-icon {
+    width: 52px; height: 52px;
+    background: var(--surface-3);
+    border: 1px solid var(--border-mid);
+    border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    opacity: .6;
+  }
+
+  .no-preview-msg  { font-size: 13.5px; color: var(--text-muted); }
+  .no-preview-hint { font-size: 12px; color: var(--text-dim); }
+
+  /* ═══════════════════════════════════════
+     TOAST
+  ══════════════════════════════════════ */
+  .toast {
+    position: fixed; bottom: 24px; right: 24px;
+    padding: 11px 16px;
+    background: var(--surface-3);
+    border: 1px solid var(--green-border);
+    border-radius: 9px;
+    color: var(--green);
+    font-size: 12.5px; font-weight: 500;
+    display: flex; align-items: center; gap: 8px;
+    box-shadow: 0 8px 28px rgba(0,0,0,.45);
+    transform: translateY(70px); opacity: 0;
+    transition: all .32s cubic-bezier(.34,1.56,.64,1);
+    z-index: 999;
+  }
+
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* ═══════════════════════════════════════
+     RESPONSIVE
+  ══════════════════════════════════════ */
+  @media (max-width: 920px) {
+    main { padding: 16px; }
+    .tables-grid { grid-template-columns: 1fr; }
+    .upload-form { grid-template-columns: 1fr; }
+    header { padding: 0 16px; }
+    .hdr-section, .rev-stats { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════ LOGIN ═══════════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-brand">
+      <div class="login-brand-mark">
+        <!-- Scale / balance icon -->
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="2" x2="12" y2="22"/>
+          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+      </div>
+      <div class="login-brand-name">Lex<span>Docs</span></div>
+    </div>
+
+    <div class="login-heading">Iniciar sesión</div>
+    <div class="login-sub">Gestión de escritos legales - Banco Guayaquil-Consulegis</div>
+    <div class="login-sub" style="margin-top:-20px; font-size:11.5px; color:var(--text-dim);">Desarrollado por: Juan Fernando Camacho</div>
+
+    <div id="login-error" class="login-error">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      Usuario o contraseña incorrectos.
+    </div>
+
+    <div class="field">
+      <label>Usuario</label>
+      <input type="text" id="inp-user" placeholder="ej. rafaela_b" autocomplete="username">
+    </div>
+    <div class="field">
+      <label>Contraseña</label>
+      <input type="password" id="inp-pass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+
+    <button class="btn-primary" onclick="handleLogin()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+      Ingresar al sistema
+    </button>
+  </div>
+</div>
+
+<!-- ═══════════════ APP ═══════════════ -->
+<div id="app-screen" style="display:none; flex-direction:column;">
+  <header>
+    <div class="hdr-left">
+      <div class="hdr-mark">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="2" x2="12" y2="22"/>
+          <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+        </svg>
+      </div>
+      <div class="hdr-brand">LexDocs</div>
+      <div class="hdr-sep"></div>
+      <div class="hdr-section" id="hdr-section"></div>
+    </div>
+    <div class="hdr-right">
+      <div class="user-chip">
+        <div class="u-avatar" id="hdr-avatar"></div>
+        <div>
+          <div class="u-name" id="hdr-name"></div>
+          <div class="u-role" id="hdr-role"></div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="handleLogout()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Cerrar sesión
+      </button>
+    </div>
+  </header>
+  <main id="main-content"></main>
+</div>
+
+<!-- ═══════════════ MODAL ═══════════════ -->
+<div class="modal-overlay" id="modal" style="display:none;" onclick="closeModalOutside(event)">
+  <div class="modal-box">
+    <div class="modal-hdr">
+      <div class="modal-hdr-info">
+        <div class="modal-hdr-title" id="modal-title"></div>
+        <div class="modal-hdr-sub"   id="modal-sub"></div>
+      </div>
+      <div class="modal-hdr-actions">
+        <a id="modal-dl" class="btn-modal-dl" download>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Descargar
+        </a>
+        <button class="btn-close" onclick="closeModal()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="modal-body" id="modal-body"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+  <span id="toast-msg"></span>
+</div>
+
+<script>
+/* ── USERS ──────────────────────────────────── */
+const USERS = {
+  rafaela_b:       { pass:'123', rol:'Solicitante', nombre:'Rafaela B.',       initials:'RB' },
+  juan_fernando_c: { pass:'456', rol:'Solicitante', nombre:'Juan Fernando C.', initials:'JC' },
+  juan_pablo_w:    { pass:'789', rol:'Revisor',     nombre:'Juan Pablo W.',    initials:'JW' },
+};
+
+let cu = null; // current user
+
+/* ── STORAGE ────────────────────────────────── */
+const LS_KEY = 'lexdocs_v2';
+const getAll  = () => JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+const saveAll = d  => localStorage.setItem(LS_KEY, JSON.stringify(d));
+
+/* ── SVG SNIPPETS ───────────────────────────── */
+const ICO = {
+  file:     `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`,
+  eye:      `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  dl:       `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+  check:    `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
+  upload:   `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+  clip:     `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>`,
+  info:     `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`,
+  clock:    `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  magnify:  `<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2dd4a0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>`,
+  user:     `<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>`,
+  empty_p:  `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
+  empty_c:  `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`,
+};
+
+/* ── AUTH ───────────────────────────────────── */
+function handleLogin() {
+  const u = document.getElementById('inp-user').value.trim();
+  const p = document.getElementById('inp-pass').value;
+  const err = document.getElementById('login-error');
+  if (USERS[u] && USERS[u].pass === p) {
+    err.style.display = 'none';
+    cu = { username: u, ...USERS[u] };
+    showApp();
+  } else {
+    err.style.display = 'flex';
+    document.getElementById('inp-pass').value = '';
+  }
+}
+
+document.getElementById('inp-pass').addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+document.getElementById('inp-user').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('inp-pass').focus(); });
+
+function handleLogout() {
+  cu = null;
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app-screen').style.display   = 'none';
+  document.getElementById('inp-user').value = '';
+  document.getElementById('inp-pass').value = '';
+}
+
+/* ── SHOW APP ───────────────────────────────── */
+function showApp() {
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app-screen').style.display   = 'flex';
+
+  const av = document.getElementById('hdr-avatar');
+  av.textContent = cu.initials;
+  av.className = 'u-avatar ' + (cu.rol === 'Revisor' ? 'rev' : 'sol');
+
+  document.getElementById('hdr-name').textContent    = cu.nombre;
+  document.getElementById('hdr-role').textContent    = cu.rol;
+  document.getElementById('hdr-section').textContent = cu.rol === 'Revisor' ? 'Panel de Revisión' : 'Panel del Solicitante';
+
+  cu.rol === 'Solicitante' ? renderSolicitante() : renderRevisor();
+}
+
+/* ── SOLICITANTE ────────────────────────────── */
+function renderSolicitante() {
+  document.getElementById('main-content').innerHTML = `
+    <div class="upload-card">
+      <div class="card-hdr">
+        <div class="card-hdr-icon">${ICO.upload}</div>
+        <div>
+          <div class="card-hdr-title">Subir nuevo escrito</div>
+          <div class="card-hdr-sub">Registra un documento para revisión y presentación</div>
+        </div>
+      </div>
+      <div class="upload-form">
+        <div class="ff">
+          <label>Nombre del escrito</label>
+          <input type="text" id="doc-name" placeholder="Ej: Demanda ejecutiva – Caso 2024-087">
+        </div>
+        <div class="ff">
+          <label>Archivo</label>
+          <label class="file-pick" id="file-pick-lbl" for="file-input">
+            ${ICO.clip}
+            <span id="file-pick-txt">Seleccionar archivo…</span>
+          </label>
+          <input type="file" id="file-input">
+        </div>
+        <button class="btn-upload" onclick="subirEscrito()">
+          ${ICO.upload} Subir escrito
+        </button>
+      </div>
+      <div class="upload-hint">
+        ${ICO.info}
+        El archivo se almacena en el navegador. PDF e imágenes tienen vista previa. Tamaño máximo: 4 MB.
+      </div>
+    </div>
+    <div class="tables-grid" id="tc"></div>
+  `;
+
+  document.getElementById('file-input').addEventListener('change', function() {
+    const lbl = document.getElementById('file-pick-lbl');
+    const txt = document.getElementById('file-pick-txt');
+    if (this.files[0]) { txt.textContent = this.files[0].name; lbl.classList.add('active'); }
+    else { txt.textContent = 'Seleccionar archivo…'; lbl.classList.remove('active'); }
+  });
+
+  refreshSolicitante();
+}
+
+function refreshSolicitante() {
+  const all  = getAll();
+  const mine = all.filter(e => e.autor === cu.username);
+  const tc   = document.getElementById('tc');
+  if (!tc) return;
+  tc.innerHTML =
+    buildTable('pendiente', mine.filter(e => e.estado === 'pendiente'), false) +
+    buildTable('presentado', mine.filter(e => e.estado === 'presentado'), false);
+}
+
+function subirEscrito() {
+  const name = document.getElementById('doc-name').value.trim();
+  const fi   = document.getElementById('file-input');
+  const file = fi.files[0];
+  if (!name) return toast('Ingresa el nombre del escrito.', 'warn');
+  if (!file) return toast('Selecciona un archivo.', 'warn');
+  if (file.size > 4 * 1024 * 1024) return toast('El archivo supera los 4 MB permitidos.', 'warn');
+
+  const r = new FileReader();
+  r.onload = e => {
+    const arr = getAll();
+    arr.push({
+      id: Date.now(),
+      nombre: name,
+      archivo: file.name,
+      mimeType: file.type || 'application/octet-stream',
+      fileData: e.target.result,
+      autor: cu.username,
+      autorNombre: cu.nombre,
+      estado: 'pendiente',
+      fecha: fmt(new Date()),
+      fechaPresent: null,
+    });
+    try { saveAll(arr); }
+    catch { return toast('Sin espacio en almacenamiento local. Usa un archivo más pequeño.', 'warn'); }
+    document.getElementById('doc-name').value = '';
+    fi.value = '';
+    document.getElementById('file-pick-txt').textContent = 'Seleccionar archivo…';
+    document.getElementById('file-pick-lbl').classList.remove('active');
+    refreshSolicitante();
+    toast('Escrito registrado correctamente.');
+  };
+  r.readAsDataURL(file);
+}
+
+/* ── REVISOR ────────────────────────────────── */
+function renderRevisor() {
+  document.getElementById('main-content').innerHTML = `
+    <div class="rev-banner">
+      <div class="rev-banner-icon">${ICO.magnify}</div>
+      <div class="rev-banner-text">
+        <h3>Panel del Revisor</h3>
+        <p>Revisa los escritos de todos los solicitantes y marca los que han sido presentados.</p>
+      </div>
+      <div class="rev-stats" id="rev-stats"></div>
+    </div>
+    <div class="tables-grid" id="tc"></div>
+  `;
+  refreshRevisor();
+}
+
+function refreshRevisor() {
+  const all  = getAll();
+  const pend = all.filter(e => e.estado === 'pendiente');
+  const pres = all.filter(e => e.estado === 'presentado');
+
+  const s = document.getElementById('rev-stats');
+  if (s) s.innerHTML = `
+    <div class="stat"><div class="stat-n c-yellow">${pend.length}</div><div class="stat-l">Pendientes</div></div>
+    <div class="stat"><div class="stat-n c-green">${pres.length}</div><div class="stat-l">Presentados</div></div>
+  `;
+
+  const tc = document.getElementById('tc');
+  if (!tc) return;
+  tc.innerHTML = buildTable('pendiente', pend, true) + buildTable('presentado', pres, true);
+}
+
+/* ── TABLE BUILDER ──────────────────────────── */
+function buildTable(tipo, docs, showAuthor) {
+  const isPend   = tipo === 'pendiente';
+  const isRevisor = cu.rol === 'Revisor';
+  const cols     = showAuthor ? 5 : 4;
+
+  let rows = '';
+
+  if (!docs.length) {
+    rows = `<tr><td colspan="${cols}">
+      <div class="empty">
+        <div style="opacity:.3">${isPend ? ICO.empty_p : ICO.empty_c}</div>
+        <div class="empty-label">Sin escritos ${isPend ? 'pendientes' : 'presentados'}</div>
+      </div>
+    </td></tr>`;
+  } else {
+    docs.forEach(doc => {
+      const thumb   = `doc-thumb ${isPend ? 'doc-thumb-y' : 'doc-thumb-g'}`;
+      const stroke  = isPend ? 'var(--yellow)' : 'var(--green)';
+      const fileIco = `<svg width="13" height="14" viewBox="0 0 24 24" fill="none" stroke="${stroke}" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>`;
+
+      const authorTd = showAuthor
+        ? `<td><span class="author-tag">${ICO.user} ${doc.autorNombre}</span></td>`
+        : '';
+
+      const hasFile   = !!doc.fileData;
+      const viewBtn   = hasFile ? `<button class="btn-view"  onclick="openPreview(${doc.id})">${ICO.eye} Ver</button>` : '';
+      const dlBtn     = hasFile ? `<button class="btn-dl"    onclick="downloadDoc(${doc.id})">${ICO.dl} Descargar</button>` : `<span class="no-file">Sin archivo</span>`;
+      const markBtn   = (isPend && isRevisor) ? `<button class="btn-mark" onclick="marcarPresentado(${doc.id})">${ICO.check} Marcar presentado</button>` : '';
+      const dateOrMark = !isPend ? `<span class="muted">${doc.fechaPresent || '—'}</span>` : markBtn;
+
+      rows += `<tr>
+        <td>
+          <div class="doc-cell">
+            <div class="${thumb}">${fileIco}</div>
+            <div>
+              <div class="doc-name">${doc.nombre}</div>
+              <div class="doc-file">${doc.archivo}</div>
+            </div>
+          </div>
+        </td>
+        ${authorTd}
+        <td><span class="muted">${doc.fecha}</span></td>
+        <td>
+          <span class="s-pill ${isPend ? 's-pill-y' : 's-pill-g'}">
+            ${isPend ? ICO.clock : ICO.check}
+            ${isPend ? 'Pendiente' : 'Presentado'}
+          </span>
+        </td>
+        <td><div class="act-cell">${viewBtn}${dlBtn}${dateOrMark}</div></td>
+      </tr>`;
+    });
+  }
+
+  const authorTh  = showAuthor ? '<th>Solicitante</th>' : '';
+  const lastTh    = (isPend && isRevisor) ? '<th>Acciones</th>' : '<th>Archivo / Fecha</th>';
+  const dotCls    = isPend ? 'pulse-y' : 'pulse-g';
+  const badgeCls  = isPend ? 'badge-y' : 'badge-g';
+  const label     = isPend ? 'Pendientes' : 'Presentados';
+
+  return `<div class="t-section">
+    <div class="t-head">
+      <div class="t-head-left">
+        <div class="pulse ${dotCls}"></div>
+        <div class="t-title">Escritos ${label}</div>
+      </div>
+      <span class="t-badge ${badgeCls}">${docs.length}</span>
+    </div>
+    <table>
+      <thead><tr><th>Escrito</th>${authorTh}<th>Fecha subida</th><th>Estado</th>${lastTh}</tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  </div>`;
+}
+
+/* ── MARCAR PRESENTADO ──────────────────────── */
+function marcarPresentado(id) {
+  const arr = getAll();
+  const i   = arr.findIndex(e => e.id === id);
+  if (i < 0) return;
+  arr[i].estado      = 'presentado';
+  arr[i].fechaPresent = fmt(new Date());
+  saveAll(arr);
+  refreshRevisor();
+  toast('Escrito marcado como Presentado.');
+}
+
+/* ── MODAL ──────────────────────────────────── */
+function openPreview(id) {
+  const doc = getAll().find(e => e.id === id);
+  if (!doc?.fileData) return;
+
+  document.getElementById('modal-title').textContent = doc.nombre;
+  document.getElementById('modal-sub').textContent   = `${doc.archivo}  ·  ${doc.autorNombre}  ·  ${doc.fecha}`;
+
+  const dl  = document.getElementById('modal-dl');
+  dl.href     = doc.fileData;
+  dl.download = doc.archivo;
+
+  const body = document.getElementById('modal-body');
+  const mime = doc.mimeType || '';
+
+  if (mime === 'application/pdf') {
+    body.innerHTML = `<iframe src="${doc.fileData}" title="Vista previa"></iframe>`;
+  } else if (mime.startsWith('image/')) {
+    body.innerHTML = `<img src="${doc.fileData}" alt="Vista previa">`;
+  } else {
+    const ext = doc.archivo.split('.').pop().toUpperCase();
+    body.innerHTML = `<div class="no-preview">
+      <div class="no-preview-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      </div>
+      <div class="no-preview-msg">Vista previa no disponible para archivos <strong>${ext}</strong></div>
+      <div class="no-preview-hint">Usa el botón Descargar para abrirlo en tu equipo.</div>
+    </div>`;
+  }
+
+  document.getElementById('modal').style.display = 'flex';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal() {
+  document.getElementById('modal').style.display = 'none';
+  document.getElementById('modal-body').innerHTML = '';
+  document.body.style.overflow = '';
+}
+
+function closeModalOutside(e) { if (e.target === document.getElementById('modal')) closeModal(); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+
+/* ── DOWNLOAD ───────────────────────────────── */
+function downloadDoc(id) {
+  const doc = getAll().find(e => e.id === id);
+  if (!doc?.fileData) return;
+  const a  = document.createElement('a');
+  a.href   = doc.fileData;
+  a.download = doc.archivo;
+  a.click();
+}
+
+/* ── TOAST ──────────────────────────────────── */
+let toastTmr;
+function toast(msg, type) {
+  const t   = document.getElementById('toast');
+  const tm  = document.getElementById('toast-msg');
+  const warn = type === 'warn';
+  tm.textContent       = msg;
+  t.style.borderColor  = warn ? 'rgba(232,160,32,.3)' : 'rgba(14,162,113,.3)';
+  t.style.color        = warn ? 'var(--yellow)' : 'var(--green)';
+  t.classList.add('show');
+  clearTimeout(toastTmr);
+  toastTmr = setTimeout(() => t.classList.remove('show'), 3400);
+}
+
+/* ── UTILS ──────────────────────────────────── */
+function fmt(d) {
+  return d.toLocaleDateString('es-EC', { day:'2-digit', month:'short', year:'numeric' });
+}
+</script>
+</body>
+</html>
