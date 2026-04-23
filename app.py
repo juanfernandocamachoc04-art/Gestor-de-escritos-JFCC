@@ -53,10 +53,10 @@ def init_db():
                 id                  INTEGER PRIMARY KEY AUTOINCREMENT,
                 nombre              TEXT    NOT NULL,
                 nombre_archivo      TEXT    NOT NULL,
-                mime_type           TEXT    NOT NULL,
+                mime_type           TEXT    NOT NULL DEFAULT 'application/octet-stream',
                 file_data           BLOB    NOT NULL,
                 creador             TEXT    NOT NULL,
-                creador_nombre      TEXT    NOT NULL,
+                creador_nombre      TEXT    NOT NULL DEFAULT '',
                 estado              TEXT    NOT NULL DEFAULT 'pendiente',
                 fecha_creacion      TEXT    NOT NULL,
                 fecha_presentado    TEXT,
@@ -66,18 +66,44 @@ def init_db():
         # Tabla modelos (nunca se borran)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS modelos (
-                id              INTEGER PRIMARY KEY AUTOINCREMENT,
-                nombre          TEXT    NOT NULL,
-                descripcion     TEXT,
-                nombre_archivo  TEXT    NOT NULL,
-                mime_type       TEXT    NOT NULL,
-                file_data       BLOB    NOT NULL,
-                subido_por      TEXT    NOT NULL,
-                subido_por_nombre TEXT  NOT NULL,
-                fecha_subida    TEXT    NOT NULL
+                id                INTEGER PRIMARY KEY AUTOINCREMENT,
+                nombre            TEXT    NOT NULL,
+                descripcion       TEXT,
+                nombre_archivo    TEXT    NOT NULL,
+                mime_type         TEXT    NOT NULL DEFAULT 'application/octet-stream',
+                file_data         BLOB    NOT NULL,
+                subido_por        TEXT    NOT NULL,
+                subido_por_nombre TEXT    NOT NULL DEFAULT '',
+                fecha_subida      TEXT    NOT NULL
             )
         """)
         conn.commit()
+        _migrar_db(conn)
+
+
+def _migrar_db(conn):
+    """Agrega columnas faltantes si la DB existía antes de esta versión."""
+    cols_escritos = {r[1] for r in conn.execute("PRAGMA table_info(escritos)")}
+    migraciones_escritos = [
+        ("fecha_presentado_dt", "ALTER TABLE escritos ADD COLUMN fecha_presentado_dt TEXT"),
+        ("mime_type",           "ALTER TABLE escritos ADD COLUMN mime_type TEXT NOT NULL DEFAULT 'application/octet-stream'"),
+        ("creador_nombre",      "ALTER TABLE escritos ADD COLUMN creador_nombre TEXT NOT NULL DEFAULT ''"),
+    ]
+    for col, sql in migraciones_escritos:
+        if col not in cols_escritos:
+            conn.execute(sql)
+
+    cols_modelos = {r[1] for r in conn.execute("PRAGMA table_info(modelos)")}
+    migraciones_modelos = [
+        ("descripcion",       "ALTER TABLE modelos ADD COLUMN descripcion TEXT"),
+        ("subido_por_nombre", "ALTER TABLE modelos ADD COLUMN subido_por_nombre TEXT NOT NULL DEFAULT ''"),
+        ("mime_type",         "ALTER TABLE modelos ADD COLUMN mime_type TEXT NOT NULL DEFAULT 'application/octet-stream'"),
+    ]
+    for col, sql in migraciones_modelos:
+        if col not in cols_modelos:
+            conn.execute(sql)
+
+    conn.commit()
 
 
 # ── ESCRITOS ─────────────────────────────────
