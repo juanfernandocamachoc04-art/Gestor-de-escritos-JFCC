@@ -50,19 +50,24 @@ def get_conn():
     """
     Retorna una conexión activa.
     - Si DATABASE_URL está configurada → PostgreSQL (Supabase).
-    - Si no → SQLite local (solo para desarrollo).
+    - Si falla o no está → SQLite local (fallback).
     """
     url = _get_db_url()
     if url:
-        import psycopg2
-        conn = psycopg2.connect(url)
-        conn.autocommit = False
-        return conn, "pg"
-    else:
-        import sqlite3
-        conn = sqlite3.connect("lexdocs.db", check_same_thread=False)
-        conn.row_factory = sqlite3.Row
-        return conn, "sqlite"
+        try:
+            import psycopg2
+            conn = psycopg2.connect(url, connect_timeout=10)
+            conn.autocommit = False
+            return conn, "pg"
+        except Exception as e:
+            st.warning(
+                f"No se pudo conectar a la base de datos remota ({e}). "
+                "Verifica que DATABASE_URL esté configurado correctamente en los Secrets de Streamlit Cloud."
+            )
+    import sqlite3
+    conn = sqlite3.connect("lexdocs.db", check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    return conn, "sqlite"
 
 
 def execute(sql, params=(), fetch=None):
