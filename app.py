@@ -389,19 +389,23 @@ def login_form():
 # UTILIDADES UI
 # ─────────────────────────────────────────────
 
-def file_preview_html(file_data: bytes, mime_type: str, filename: str) -> str:
-    b64      = base64.b64encode(file_data).decode()
-    data_url = f"data:{mime_type};base64,{b64}"
+def render_preview(file_data: bytes, mime_type: str, filename: str):
+    """Renderiza vista previa usando componentes nativos de Streamlit."""
+    import streamlit.components.v1 as components
     if mime_type == "application/pdf":
-        return f'<iframe src="{data_url}" width="100%" height="520px" style="border:none;border-radius:6px;"></iframe>'
+        b64 = base64.b64encode(file_data).decode()
+        pdf_html = f"""
+            <iframe
+                src="data:application/pdf;base64,{b64}"
+                width="100%" height="600"
+                style="border:1px solid #272b3d;border-radius:8px;">
+            </iframe>"""
+        components.html(pdf_html, height=620, scrolling=False)
     elif mime_type.startswith("image/"):
-        return f'<img src="{data_url}" style="max-width:100%;border-radius:6px;" alt="{filename}">'
+        st.image(file_data, use_container_width=True)
     else:
         ext = filename.rsplit(".", 1)[-1].upper() if "." in filename else "archivo"
-        return f"""<div style="padding:40px;text-align:center;background:#1f2230;
-                        border-radius:8px;color:#7a80a0;font-size:13px;">
-                Vista previa no disponible para archivos <strong>{ext}</strong>.<br>
-                Usa el botón Descargar para abrirlo en tu equipo.</div>"""
+        st.info(f"Vista previa no disponible para archivos **{ext}**. Usa el botón Descargar para abrirlo.")
 
 
 def download_link(file_data: bytes, filename: str, mime_type: str, label: str = "Descargar"):
@@ -515,8 +519,7 @@ def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: boo
                     st.rerun()
 
         if st.session_state.get(f"prev_e_{eid}", False):
-            st.markdown(file_preview_html(fd, e["mime_type"], e["nombre_archivo"]),
-                        unsafe_allow_html=True)
+            render_preview(fd, e["mime_type"], e["nombre_archivo"])
 
 
 def tab_escritos():
@@ -696,8 +699,7 @@ def tab_modelos():
                             st.rerun()
 
             if st.session_state.get(f"prev_m_{m['id']}", False):
-                st.markdown(file_preview_html(fd, m["mime_type"], m["nombre_archivo"]),
-                            unsafe_allow_html=True)
+                render_preview(fd, m["mime_type"], m["nombre_archivo"])
 
 
 # ─────────────────────────────────────────────
