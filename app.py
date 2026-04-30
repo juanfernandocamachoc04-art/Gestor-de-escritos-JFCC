@@ -26,6 +26,7 @@ USERS = {
         "password": hashlib.sha256("456".encode()).hexdigest(),
         "nombre":   "Juan Fernando C.",
         "rol":      "Solicitante",
+        "puede_eliminar": True,
     },
     "juan_pablo_w": {
         "password": hashlib.sha256("789".encode()).hexdigest(),
@@ -240,6 +241,10 @@ def marcar_presentado(id_escrito):
     """, (fecha_legible, fecha_iso, id_escrito))
 
 
+def eliminar_escrito(id_escrito):
+    execute("DELETE FROM escritos WHERE id = ?", (id_escrito,))
+
+
 def get_escritos_usuario(username):
     return execute("""
         SELECT id, nombre, nombre_archivo, mime_type, file_data,
@@ -441,8 +446,9 @@ def estado_badge(estado: str, fecha_presentado_dt=None) -> str:
 # PESTAÑA: ESCRITOS
 # ─────────────────────────────────────────────
 
-def render_escrito(e: dict, show_author: bool, show_mark: bool):
-    fd = to_bytes(e["file_data"])
+def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: bool = False):
+    fd  = to_bytes(e["file_data"])
+    eid = e["id"]
     with st.container(border=True):
         c1, c2 = st.columns([3, 1])
         with c1:
@@ -463,20 +469,52 @@ def render_escrito(e: dict, show_author: bool, show_mark: bool):
             f"<div style='font-size:11px;color:#7a80a0;margin-bottom:8px;'>{'  ·  '.join(meta)}</div>",
             unsafe_allow_html=True)
 
-        bcols = st.columns([1, 1, 1, 2]) if show_mark else st.columns([1, 1, 3])
+        # Construir columnas dinámicamente según botones activos
+        n_extra = sum([show_mark, show_delete])
+        if n_extra == 2:
+            bcols = st.columns([1, 1, 1, 1, 1])
+        elif n_extra == 1:
+            bcols = st.columns([1, 1, 1, 2])
+        else:
+            bcols = st.columns([1, 1, 3])
+
         with bcols[0]:
-            if st.button("Ver", key=f"ver_e_{e['id']}", use_container_width=True):
-                k = f"prev_e_{e['id']}"
+            if st.button("Ver", key=f"ver_e_{eid}", use_container_width=True):
+                k = f"prev_e_{eid}"
                 st.session_state[k] = not st.session_state.get(k, False)
         with bcols[1]:
             download_link(fd, e["nombre_archivo"], e["mime_type"])
+
+        col_idx = 2
         if show_mark:
-            with bcols[2]:
-                if st.button("Marcar presentado", key=f"mark_{e['id']}",
+            with bcols[col_idx]:
+                if st.button("Marcar presentado", key=f"mark_{eid}",
                              type="primary", use_container_width=True):
-                    marcar_presentado(e["id"])
+                    marcar_presentado(eid)
                     st.rerun()
-        if st.session_state.get(f"prev_e_{e['id']}", False):
+            col_idx += 1
+
+        if show_delete:
+            with bcols[col_idx]:
+                if st.button("Eliminar", key=f"del_e_{eid}", use_container_width=True):
+                    st.session_state[f"confirm_del_e_{eid}"] = True
+
+        # Confirmación de borrado
+        if show_delete and st.session_state.get(f"confirm_del_e_{eid}", False):
+            st.warning(f"¿Eliminar **{e['nombre']}** permanentemente? Esta acción no se puede deshacer.")
+            cc1, cc2 = st.columns(2)
+            with cc1:
+                if st.button("Sí, eliminar", key=f"yes_del_e_{eid}",
+                             type="primary", use_container_width=True):
+                    eliminar_escrito(eid)
+                    st.session_state.pop(f"confirm_del_e_{eid}", None)
+                    st.rerun()
+            with cc2:
+                if st.button("Cancelar", key=f"no_del_e_{eid}", use_container_width=True):
+                    st.session_state.pop(f"confirm_del_e_{eid}", None)
+                    st.rerun()
+
+        if st.session_state.get(f"prev_e_{eid}", False):
             st.markdown(file_preview_html(fd, e["mime_type"], e["nombre_archivo"]),
                         unsafe_allow_html=True)
 
@@ -513,13 +551,14 @@ def tab_escritos():
         escritos    = get_escritos_usuario(st.session_state.username)
         pendientes  = [e for e in escritos if e["estado"] == "pendiente"]
         presentados = [e for e in escritos if e["estado"] == "presentado"]
+        puede_eliminar = USERS.get(st.session_state.username, {}).get("puede_eliminar", False)
         col1, col2  = st.columns(2)
         with col1:
             _section_header("Pendientes", len(pendientes), "yellow")
-            [render_escrito(e, False, False) for e in pendientes] or [_empty_state("Sin escritos pendientes")]
+            [render_escrito(e, False, False, show_delete=puede_eliminar) for e in pendientes] or [_empty_state("Sin escritos pendientes")]
         with col2:
             _section_header("Presentados", len(presentados), "green")
-            [render_escrito(e, False, False) for e in presentados] or [_empty_state("Sin escritos presentados")]
+            [render_escrito(e, False, False, show_delete=puede_eliminar) for e in presentados] or [_empty_state("Sin escritos presentados")]
 
     else:
         todos       = get_todos_escritos()
