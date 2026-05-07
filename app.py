@@ -297,8 +297,8 @@ def eliminar_escrito(id_escrito):
 
 
 def get_escritos_usuario(username):
-    return execute("""
-        SELECT id, nombre, num_expediente, tipo_escrito, carpeta_anio, nombre_archivo, mime_type, file_data,
+    rows = execute("""
+        SELECT id, nombre, num_expediente, tipo_escrito, nombre_archivo, mime_type, file_data,
                creador, creador_nombre, estado,
                fecha_creacion, fecha_presentado, fecha_presentado_dt,
                observacion, version
@@ -306,17 +306,40 @@ def get_escritos_usuario(username):
         WHERE creador = ?
         ORDER BY id DESC
     """, (username,), fetch="all") or []
+    # Intentar obtener carpeta_anio por separado para no romper si no existe
+    for r in rows:
+        r.setdefault("carpeta_anio", None)
+    try:
+        extras = execute("""
+            SELECT id, carpeta_anio FROM escritos WHERE creador = ?
+        """, (username,), fetch="all") or []
+        extra_map = {e["id"]: e["carpeta_anio"] for e in extras}
+        for r in rows:
+            r["carpeta_anio"] = extra_map.get(r["id"])
+    except Exception:
+        pass
+    return rows
 
 
 def get_todos_escritos():
-    return execute("""
-        SELECT id, nombre, num_expediente, tipo_escrito, carpeta_anio, nombre_archivo, mime_type, file_data,
+    rows = execute("""
+        SELECT id, nombre, num_expediente, tipo_escrito, nombre_archivo, mime_type, file_data,
                creador, creador_nombre, estado,
                fecha_creacion, fecha_presentado, fecha_presentado_dt,
                observacion, version
         FROM escritos
         ORDER BY id DESC
     """, fetch="all") or []
+    for r in rows:
+        r.setdefault("carpeta_anio", None)
+    try:
+        extras = execute("SELECT id, carpeta_anio FROM escritos", fetch="all") or []
+        extra_map = {e["id"]: e["carpeta_anio"] for e in extras}
+        for r in rows:
+            r["carpeta_anio"] = extra_map.get(r["id"])
+    except Exception:
+        pass
+    return rows
 
 
 # ─────────────────────────────────────────────
