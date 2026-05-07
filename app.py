@@ -127,7 +127,9 @@ def init_db():
                     fecha_presentado    TEXT,
                     fecha_presentado_dt TEXT,
                     observacion         TEXT,
-                    version             INTEGER NOT NULL DEFAULT 1
+                    version             INTEGER NOT NULL DEFAULT 1,
+                    num_expediente      TEXT    NOT NULL DEFAULT '',
+                    tipo_escrito        TEXT    NOT NULL DEFAULT ''
                 )
             """)
             cur.execute("""
@@ -150,8 +152,10 @@ def init_db():
             """)
             cols_pg = {r[0] for r in cur.fetchall()}
             for col, ddl in [
-                ("observacion", "ALTER TABLE escritos ADD COLUMN observacion TEXT"),
-                ("version",     "ALTER TABLE escritos ADD COLUMN version INTEGER NOT NULL DEFAULT 1"),
+                ("observacion",     "ALTER TABLE escritos ADD COLUMN observacion TEXT"),
+                ("version",         "ALTER TABLE escritos ADD COLUMN version INTEGER NOT NULL DEFAULT 1"),
+                ("num_expediente",  "ALTER TABLE escritos ADD COLUMN num_expediente TEXT NOT NULL DEFAULT ''"),
+                ("tipo_escrito",    "ALTER TABLE escritos ADD COLUMN tipo_escrito TEXT NOT NULL DEFAULT ''"),
             ]:
                 if col not in cols_pg:
                     cur.execute(ddl)
@@ -170,7 +174,9 @@ def init_db():
                     fecha_presentado    TEXT,
                     fecha_presentado_dt TEXT,
                     observacion         TEXT,
-                    version             INTEGER NOT NULL DEFAULT 1
+                    version             INTEGER NOT NULL DEFAULT 1,
+                    num_expediente      TEXT    NOT NULL DEFAULT '',
+                    tipo_escrito        TEXT    NOT NULL DEFAULT ''
                 )
             """)
             cur.execute("""
@@ -193,6 +199,8 @@ def init_db():
                 ("creador_nombre",      "ALTER TABLE escritos ADD COLUMN creador_nombre TEXT NOT NULL DEFAULT ''"),
                 ("observacion",         "ALTER TABLE escritos ADD COLUMN observacion TEXT"),
                 ("version",             "ALTER TABLE escritos ADD COLUMN version INTEGER NOT NULL DEFAULT 1"),
+                ("num_expediente",      "ALTER TABLE escritos ADD COLUMN num_expediente TEXT NOT NULL DEFAULT ''"),
+                ("tipo_escrito",        "ALTER TABLE escritos ADD COLUMN tipo_escrito TEXT NOT NULL DEFAULT ''"),
             ]:
                 if col not in cols:
                     cur.execute(ddl)
@@ -215,7 +223,7 @@ def purgar_escritos_expirados():
     """, (limite,))
 
 
-def insertar_escrito(nombre, nombre_archivo, mime_type, file_data, creador, creador_nombre, version=1):
+def insertar_escrito(nombre, num_expediente, tipo_escrito, nombre_archivo, mime_type, file_data, creador, creador_nombre, version=1):
     fecha = datetime.now().strftime("%d %b %Y")
     conn, engine = get_conn()
     try:
@@ -224,18 +232,18 @@ def insertar_escrito(nombre, nombre_archivo, mime_type, file_data, creador, crea
             from psycopg2 import Binary
             cur.execute("""
                 INSERT INTO escritos
-                    (nombre, nombre_archivo, mime_type, file_data,
+                    (nombre, num_expediente, tipo_escrito, nombre_archivo, mime_type, file_data,
                      creador, creador_nombre, estado, fecha_creacion, version)
-                VALUES (%s, %s, %s, %s, %s, %s, 'pendiente', %s, %s)
-            """, (nombre, nombre_archivo, mime_type, Binary(file_data),
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'pendiente', %s, %s)
+            """, (nombre, num_expediente, tipo_escrito, nombre_archivo, mime_type, Binary(file_data),
                   creador, creador_nombre, fecha, version))
         else:
             cur.execute("""
                 INSERT INTO escritos
-                    (nombre, nombre_archivo, mime_type, file_data,
+                    (nombre, num_expediente, tipo_escrito, nombre_archivo, mime_type, file_data,
                      creador, creador_nombre, estado, fecha_creacion, version)
-                VALUES (?, ?, ?, ?, ?, ?, 'pendiente', ?, ?)
-            """, (nombre, nombre_archivo, mime_type, file_data,
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pendiente', ?, ?)
+            """, (nombre, num_expediente, tipo_escrito, nombre_archivo, mime_type, file_data,
                   creador, creador_nombre, fecha, version))
         conn.commit()
     finally:
@@ -269,7 +277,7 @@ def eliminar_escrito(id_escrito):
 
 def get_escritos_usuario(username):
     return execute("""
-        SELECT id, nombre, nombre_archivo, mime_type, file_data,
+        SELECT id, nombre, num_expediente, tipo_escrito, nombre_archivo, mime_type, file_data,
                creador, creador_nombre, estado,
                fecha_creacion, fecha_presentado, fecha_presentado_dt,
                observacion, version
@@ -281,7 +289,7 @@ def get_escritos_usuario(username):
 
 def get_todos_escritos():
     return execute("""
-        SELECT id, nombre, nombre_archivo, mime_type, file_data,
+        SELECT id, nombre, num_expediente, tipo_escrito, nombre_archivo, mime_type, file_data,
                creador, creador_nombre, estado,
                fecha_creacion, fecha_presentado, fecha_presentado_dt,
                observacion, version
@@ -438,6 +446,7 @@ def render_filtros(escritos: list, key_prefix: str) -> list:
                 "Más antiguo primero",
                 "Por solicitante (A-Z)",
                 "Por nombre (A-Z)",
+                "Por expediente (A-Z)",
                 "Días restantes (presentados)",
             ], key=f"{key_prefix}_orden")
         with c2:
@@ -450,11 +459,17 @@ def render_filtros(escritos: list, key_prefix: str) -> list:
             autor_fil = st.multiselect("Solicitante", autores_disp,
                                        default=autores_disp,
                                        key=f"{key_prefix}_autor")
+        busqueda = st.text_input("Buscar por expediente o nombre",
+                                  placeholder="Ej: 09332-2024 o Demanda…",
+                                  key=f"{key_prefix}_busqueda")
 
     # Filtrar
     result = [e for e in escritos
               if e["estado"] in estado_fil
-              and e["creador_nombre"] in autor_fil]
+              and e["creador_nombre"] in autor_fil
+              and (not busqueda or
+                   busqueda.lower() in (e.get("num_expediente") or "").lower() or
+                   busqueda.lower() in e["nombre"].lower())]
 
     # Ordenar
     if orden == "Más reciente primero":
@@ -465,6 +480,8 @@ def render_filtros(escritos: list, key_prefix: str) -> list:
         result = sorted(result, key=lambda x: x["creador_nombre"])
     elif orden == "Por nombre (A-Z)":
         result = sorted(result, key=lambda x: x["nombre"].lower())
+    elif orden == "Por expediente (A-Z)":
+        result = sorted(result, key=lambda x: (x.get("num_expediente") or "").lower())
     elif orden == "Días restantes (presentados)":
         result = sorted(result, key=lambda x: dias_restantes(x.get("fecha_presentado_dt") or "9999-12-31"))
 
@@ -484,8 +501,14 @@ def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: boo
     with st.container(border=True):
         c1, c2 = st.columns([3, 1])
         with c1:
+            exp   = e.get("num_expediente") or ""
+            tipo  = e.get("tipo_escrito") or ""
+            exp_html  = f'<span style="color:#7b87f5;font-weight:600;">{exp}</span>  ·  ' if exp else ""
+            tipo_html = f'<span style="color:#7a80a0;">{tipo}</span>' if tipo else ""
+            sub_line  = (exp_html + tipo_html).strip(" · ") if (exp or tipo) else ""
             st.markdown(f"""
                 <div style="font-weight:600;font-size:13px;color:#dde1ef;">{e['nombre']}</div>
+                {f'<div style="font-size:11px;margin-top:3px;">{sub_line}</div>' if sub_line else ""}
                 <div style="font-size:11px;color:#4a5070;margin-top:2px;">{e['nombre_archivo']}</div>
             """, unsafe_allow_html=True)
         with c2:
@@ -602,6 +625,8 @@ def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: boo
                     else:
                         insertar_escrito(
                             nombre         = e["nombre"],
+                            num_expediente = e.get("num_expediente") or "",
+                            tipo_escrito   = e.get("tipo_escrito") or "",
                             nombre_archivo = nuevo_archivo.name,
                             mime_type      = nuevo_archivo.type or "application/octet-stream",
                             file_data      = nuevo_archivo.read(),
@@ -629,13 +654,22 @@ def tab_escritos():
         # ── Subir escrito ──
         st.markdown("### Subir nuevo escrito")
         with st.form("form_escrito", clear_on_submit=True):
-            nombre   = st.text_input("Nombre del escrito",
-                                     placeholder="Ej: Demanda ejecutiva – Caso 2024-087")
+            nombre         = st.text_input("Nombre del escrito",
+                                           placeholder="Ej: Demanda ejecutiva – Caso 2024-087")
+            c_exp, c_tipo  = st.columns(2)
+            with c_exp:
+                num_expediente = st.text_input("Número de expediente / causa *",
+                                               placeholder="Ej: 09332-2024-00262")
+            with c_tipo:
+                tipo_escrito   = st.text_input("Tipo de escrito",
+                                               placeholder="Ej: Solicitud de desglose, Citación…")
             uploaded = st.file_uploader("Archivo", help="PDF, imágenes, Word. Máximo 10 MB.")
             submitted = st.form_submit_button("Subir escrito")
             if submitted:
                 if not nombre.strip():
                     st.error("Ingresa el nombre del escrito.")
+                elif not num_expediente.strip():
+                    st.error("El número de expediente es obligatorio.")
                 elif uploaded is None:
                     st.error("Selecciona un archivo.")
                 elif uploaded.size > 10 * 1024 * 1024:
@@ -643,6 +677,8 @@ def tab_escritos():
                 else:
                     insertar_escrito(
                         nombre         = nombre.strip(),
+                        num_expediente = num_expediente.strip(),
+                        tipo_escrito   = tipo_escrito.strip(),
                         nombre_archivo = uploaded.name,
                         mime_type      = uploaded.type or "application/octet-stream",
                         file_data      = uploaded.read(),
