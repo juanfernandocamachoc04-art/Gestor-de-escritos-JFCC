@@ -146,24 +146,31 @@ def init_db():
                     fecha_subida      TEXT    NOT NULL
                 )
             """)
-            # Migración PostgreSQL — agregar columnas si no existen
-            cur.execute("""
-                SELECT column_name FROM information_schema.columns
-                WHERE table_name = 'escritos'
-            """)
-            cols_pg = {r[0] for r in cur.fetchall()}
-            for col, ddl in [
-                ("observacion",     "ALTER TABLE escritos ADD COLUMN observacion TEXT"),
-                ("version",         "ALTER TABLE escritos ADD COLUMN version INTEGER NOT NULL DEFAULT 1"),
-                ("num_expediente",  "ALTER TABLE escritos ADD COLUMN num_expediente TEXT NOT NULL DEFAULT ''"),
-                ("tipo_escrito",    "ALTER TABLE escritos ADD COLUMN tipo_escrito TEXT NOT NULL DEFAULT ''"),
-                ("carpeta_anio",    "ALTER TABLE escritos ADD COLUMN carpeta_anio TEXT"),
-            ]:
-                if col not in cols_pg:
+            # Migración PostgreSQL — cada ALTER en su propia transacción
+            migraciones = [
+                ("observacion",    "ALTER TABLE escritos ADD COLUMN IF NOT EXISTS observacion TEXT"),
+                ("version",        "ALTER TABLE escritos ADD COLUMN IF NOT EXISTS version INTEGER NOT NULL DEFAULT 1"),
+                ("num_expediente", "ALTER TABLE escritos ADD COLUMN IF NOT EXISTS num_expediente TEXT NOT NULL DEFAULT ''"),
+                ("tipo_escrito",   "ALTER TABLE escritos ADD COLUMN IF NOT EXISTS tipo_escrito TEXT NOT NULL DEFAULT ''"),
+                ("carpeta_anio",   "ALTER TABLE escritos ADD COLUMN IF NOT EXISTS carpeta_anio TEXT"),
+            ]
+            for _, ddl in migraciones:
+                try:
                     cur.execute(ddl)
+                    conn.commit()
+                except Exception:
+                    conn.rollback()
             # Renombrar carpeta_año → carpeta_anio si existe con la ñ
-            if "carpeta_año" in cols_pg and "carpeta_anio" not in cols_pg:
-                cur.execute('ALTER TABLE escritos RENAME COLUMN "carpeta_año" TO carpeta_anio')
+            try:
+                cur.execute("""
+                    SELECT column_name FROM information_schema.columns
+                    WHERE table_name = 'escritos' AND column_name = 'carpeta_año'
+                """)
+                if cur.fetchone():
+                    cur.execute('ALTER TABLE escritos RENAME COLUMN "carpeta_año" TO carpeta_anio')
+                    conn.commit()
+            except Exception:
+                conn.rollback()
         else:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS escritos (
