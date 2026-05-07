@@ -129,7 +129,8 @@ def init_db():
                     observacion         TEXT,
                     version             INTEGER NOT NULL DEFAULT 1,
                     num_expediente      TEXT    NOT NULL DEFAULT '',
-                    tipo_escrito        TEXT    NOT NULL DEFAULT ''
+                    tipo_escrito        TEXT    NOT NULL DEFAULT '',
+                    carpeta_año         TEXT
                 )
             """)
             cur.execute("""
@@ -156,6 +157,7 @@ def init_db():
                 ("version",         "ALTER TABLE escritos ADD COLUMN version INTEGER NOT NULL DEFAULT 1"),
                 ("num_expediente",  "ALTER TABLE escritos ADD COLUMN num_expediente TEXT NOT NULL DEFAULT ''"),
                 ("tipo_escrito",    "ALTER TABLE escritos ADD COLUMN tipo_escrito TEXT NOT NULL DEFAULT ''"),
+                ("carpeta_año",     "ALTER TABLE escritos ADD COLUMN carpeta_año TEXT"),
             ]:
                 if col not in cols_pg:
                     cur.execute(ddl)
@@ -176,7 +178,8 @@ def init_db():
                     observacion         TEXT,
                     version             INTEGER NOT NULL DEFAULT 1,
                     num_expediente      TEXT    NOT NULL DEFAULT '',
-                    tipo_escrito        TEXT    NOT NULL DEFAULT ''
+                    tipo_escrito        TEXT    NOT NULL DEFAULT '',
+                    carpeta_año         TEXT
                 )
             """)
             cur.execute("""
@@ -201,6 +204,7 @@ def init_db():
                 ("version",             "ALTER TABLE escritos ADD COLUMN version INTEGER NOT NULL DEFAULT 1"),
                 ("num_expediente",      "ALTER TABLE escritos ADD COLUMN num_expediente TEXT NOT NULL DEFAULT ''"),
                 ("tipo_escrito",        "ALTER TABLE escritos ADD COLUMN tipo_escrito TEXT NOT NULL DEFAULT ''"),
+                ("carpeta_año",         "ALTER TABLE escritos ADD COLUMN carpeta_año TEXT"),
             ]:
                 if col not in cols:
                     cur.execute(ddl)
@@ -271,13 +275,20 @@ def marcar_observado(id_escrito, observacion: str):
     """, (observacion, id_escrito))
 
 
+def asignar_carpeta(id_escrito, año: str):
+    """Asigna manualmente la carpeta de año a un escrito."""
+    execute("""
+        UPDATE escritos SET carpeta_año = ? WHERE id = ?
+    """, (año.strip() if año.strip() else None, id_escrito))
+
+
 def eliminar_escrito(id_escrito):
     execute("DELETE FROM escritos WHERE id = ?", (id_escrito,))
 
 
 def get_escritos_usuario(username):
     return execute("""
-        SELECT id, nombre, num_expediente, tipo_escrito, nombre_archivo, mime_type, file_data,
+        SELECT id, nombre, num_expediente, tipo_escrito, carpeta_año, nombre_archivo, mime_type, file_data,
                creador, creador_nombre, estado,
                fecha_creacion, fecha_presentado, fecha_presentado_dt,
                observacion, version
@@ -289,7 +300,7 @@ def get_escritos_usuario(username):
 
 def get_todos_escritos():
     return execute("""
-        SELECT id, nombre, num_expediente, tipo_escrito, nombre_archivo, mime_type, file_data,
+        SELECT id, nombre, num_expediente, tipo_escrito, carpeta_año, nombre_archivo, mime_type, file_data,
                creador, creador_nombre, estado,
                fecha_creacion, fecha_presentado, fecha_presentado_dt,
                observacion, version
@@ -433,32 +444,32 @@ def _empty_state(msg):
 
 
 def _extraer_año(num_expediente: str) -> str:
-    """Extrae el año del expediente. Ej: 09332-2024-00262 → 2024. Si no detecta → 'Sin año'."""
+    """Extrae el año del expediente. Ej: 09332-2024-00262 → 2024. Si no detecta → None."""
     import re
     partes = re.split(r"[-/.]", (num_expediente or "").strip())
     for p in partes:
         if len(p) == 4 and p.isdigit() and 1990 <= int(p) <= 2099:
             return p
-    return "Sin año"
+    return None
+
+
+def _get_carpeta(e: dict) -> str:
+    """Retorna la carpeta efectiva: manual > auto-detectada > None (sin carpeta)."""
+    manual = (e.get("carpeta_año") or "").strip()
+    if manual:
+        return manual
+    return _extraer_año(e.get("num_expediente") or e.get("nombre") or "")
 
 
 def render_por_año(escritos: list, show_author: bool, show_mark: bool,
-                   show_delete: bool, estado: str, key_suffix: str):
-    """Agrupa escritos por año y renderiza cada grupo en un expander colapsable."""
+                   show_delete: bool, estado: str, key_suffix: str,
+                   puede_asignar: bool = False):
+    """Agrupa escritos por año y renderiza cada grupo en un expander colapsable.
+    Escritos sin carpeta se muestran sueltos al final sin ningún expander.
+    """
     if not escritos:
         _empty_state(f"Sin escritos {estado}")
         return
-
-    # Agrupar
-    grupos: dict = {}
-    for e in escritos:
-        año = _extraer_año(e.get("num_expediente") or e.get("nombre") or "")
-        grupos.setdefault(año, []).append(e)
-
-    # Ordenar años descendente (más reciente primero), "Sin año" al final
-    años_ordenados = sorted(
-        [a for a in grupos if a != "Sin año"], reverse=True
-    ) + (["Sin año"] if "Sin año" in grupos else [])
 
     color_map = {
         "pendiente":  "#e8a020",
@@ -467,10 +478,22 @@ def render_por_año(escritos: list, show_author: bool, show_mark: bool,
     }
     color = color_map.get(estado, "#7a80a0")
 
+    # Agrupar — separar los que tienen carpeta de los que no
+    grupos: dict = {}
+    sin_carpeta: list = []
+    for e in escritos:
+        c = _get_carpeta(e)
+        if c:
+            grupos.setdefault(c, []).append(e)
+        else:
+            sin_carpeta.append(e)
+
+    # Ordenar años descendente
+    años_ordenados = sorted(grupos.keys(), reverse=True)
+
     for año in años_ordenados:
         grupo = grupos[año]
-        label = f"{'Carpeta'} {año}  —  {len(grupo)} escrito{'s' if len(grupo) != 1 else ''}"
-        # Expandir automáticamente el año más reciente
+        label = f"Carpeta {año}  —  {len(grupo)} escrito{'s' if len(grupo) != 1 else ''}"
         expandido = (año == años_ordenados[0])
         with st.expander(label, expanded=expandido):
             st.markdown(f"""
@@ -487,7 +510,17 @@ def render_por_año(escritos: list, show_author: bool, show_mark: bool,
             """, unsafe_allow_html=True)
             for e in grupo:
                 render_escrito(e, show_author, show_mark,
-                               show_delete=show_delete)
+                               show_delete=show_delete,
+                               puede_asignar=puede_asignar)
+
+    # Escritos sin carpeta — sueltos, sin expander
+    if sin_carpeta:
+        if años_ordenados:
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        for e in sin_carpeta:
+            render_escrito(e, show_author, show_mark,
+                           show_delete=show_delete,
+                           puede_asignar=puede_asignar)
 
 
 # ─────────────────────────────────────────────
@@ -521,7 +554,7 @@ def render_filtros(escritos: list, key_prefix: str) -> list:
                                        key=f"{key_prefix}_autor")
         with c3:
             años_disp = sorted(
-                {_extraer_año(e.get("num_expediente") or "") for e in escritos},
+                {c for e in escritos if (c := _get_carpeta(e))},
                 reverse=True
             )
             año_fil = st.multiselect("Año", años_disp,
@@ -559,7 +592,8 @@ def render_filtros(escritos: list, key_prefix: str) -> list:
 # RENDER ESCRITO
 # ─────────────────────────────────────────────
 
-def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: bool = False):
+def render_escrito(e: dict, show_author: bool, show_mark: bool,
+                   show_delete: bool = False, puede_asignar: bool = False):
     fd  = to_bytes(e["file_data"])
     eid = e["id"]
     ver = e.get("version") or 1
@@ -701,6 +735,36 @@ def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: boo
                         eliminar_escrito(eid)
                         st.rerun()
 
+        # ── Asignar carpeta manualmente ──
+        if puede_asignar:
+            carpeta_actual = _get_carpeta(e)
+            lbl_btn = f"Carpeta: {carpeta_actual}" if carpeta_actual else "Asignar carpeta"
+            if st.button(lbl_btn, key=f"btn_carp_{eid}", use_container_width=False):
+                st.session_state[f"form_carp_{eid}"] = not st.session_state.get(f"form_carp_{eid}", False)
+
+            if st.session_state.get(f"form_carp_{eid}", False):
+                año_actual = (e.get("carpeta_año") or "").strip()
+                año_options = [str(y) for y in range(2030, 1989, -1)]
+                idx = año_options.index(año_actual) if año_actual in año_options else 0
+                with st.form(key=f"form_carp_submit_{eid}"):
+                    nuevo_año = st.selectbox(
+                        "Selecciona el año de la carpeta",
+                        options=["— Sin carpeta —"] + año_options,
+                        index=0 if not año_actual else año_options.index(año_actual) + 1,
+                        key=f"sel_carp_{eid}",
+                    )
+                    ca1, ca2 = st.columns(2)
+                    with ca1:
+                        if st.form_submit_button("Guardar", use_container_width=True):
+                            valor = "" if nuevo_año == "— Sin carpeta —" else nuevo_año
+                            asignar_carpeta(eid, valor)
+                            st.session_state.pop(f"form_carp_{eid}", None)
+                            st.rerun()
+                    with ca2:
+                        if st.form_submit_button("Cancelar", use_container_width=True):
+                            st.session_state.pop(f"form_carp_{eid}", None)
+                            st.rerun()
+
         # ── Vista previa ──
         if st.session_state.get(f"prev_e_{eid}", False):
             render_preview(fd, e["mime_type"], e["nombre_archivo"])
@@ -769,13 +833,13 @@ def tab_escritos():
         ])
         with tab_pend:
             render_por_año(pendientes, False, False, puede_eliminar,
-                           "pendiente", f"sol_pend")
+                           "pendiente", "sol_pend", puede_asignar=True)
         with tab_obs:
             render_por_año(observados, False, False, puede_eliminar,
-                           "observado", f"sol_obs")
+                           "observado", "sol_obs", puede_asignar=True)
         with tab_pres:
             render_por_año(presentados, False, False, puede_eliminar,
-                           "presentado", f"sol_pres")
+                           "presentado", "sol_pres", puede_asignar=True)
 
     else:
         # ── Vista Revisor ──
