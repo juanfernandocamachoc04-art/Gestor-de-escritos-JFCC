@@ -432,12 +432,78 @@ def _empty_state(msg):
                 unsafe_allow_html=True)
 
 
+def _extraer_año(num_expediente: str) -> str:
+    """Extrae el año del expediente. Ej: 09332-2024-00262 → 2024. Si no detecta → 'Sin año'."""
+    import re
+    partes = re.split(r"[-/.]", (num_expediente or "").strip())
+    for p in partes:
+        if len(p) == 4 and p.isdigit() and 1990 <= int(p) <= 2099:
+            return p
+    return "Sin año"
+
+
+def render_por_año(escritos: list, show_author: bool, show_mark: bool,
+                   show_delete: bool, estado: str, key_suffix: str):
+    """Agrupa escritos por año y renderiza cada grupo en un expander colapsable."""
+    if not escritos:
+        _empty_state(f"Sin escritos {estado}")
+        return
+
+    # Agrupar
+    grupos: dict = {}
+    for e in escritos:
+        año = _extraer_año(e.get("num_expediente") or e.get("nombre") or "")
+        grupos.setdefault(año, []).append(e)
+
+    # Ordenar años descendente (más reciente primero), "Sin año" al final
+    años_ordenados = sorted(
+        [a for a in grupos if a != "Sin año"], reverse=True
+    ) + (["Sin año"] if "Sin año" in grupos else [])
+
+    color_map = {
+        "pendiente":  "#e8a020",
+        "observado":  "#ef4444",
+        "presentado": "#0ea271",
+    }
+    color = color_map.get(estado, "#7a80a0")
+
+    for año in años_ordenados:
+        grupo = grupos[año]
+        label = f"{'Carpeta'} {año}  —  {len(grupo)} escrito{'s' if len(grupo) != 1 else ''}"
+        # Expandir automáticamente el año más reciente
+        expandido = (año == años_ordenados[0])
+        with st.expander(label, expanded=expandido):
+            st.markdown(f"""
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;
+                            padding:8px 12px;background:rgba(255,255,255,.03);
+                            border-radius:7px;border-left:3px solid {color};">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                         stroke="{color}" stroke-width="2" stroke-linecap="round">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <span style="font-size:12px;font-weight:600;color:{color};">{año}</span>
+                    <span style="font-size:11px;color:#7a80a0;">{len(grupo)} escrito{'s' if len(grupo) != 1 else ''}</span>
+                </div>
+            """, unsafe_allow_html=True)
+            for e in grupo:
+                render_escrito(e, show_author, show_mark,
+                               show_delete=show_delete)
+
+
 # ─────────────────────────────────────────────
 # FILTROS / ORDENAMIENTO
 # ─────────────────────────────────────────────
 
 def render_filtros(escritos: list, key_prefix: str) -> list:
     """Muestra controles de filtro y retorna la lista ordenada/filtrada."""
+    # Buscador siempre visible (fuera del expander)
+    busqueda = st.text_input(
+        "Buscar",
+        placeholder="Número de expediente, tipo de escrito…",
+        key=f"{key_prefix}_busqueda",
+        label_visibility="collapsed",
+    )
+
     with st.expander("Filtros y ordenamiento", expanded=False):
         c1, c2, c3 = st.columns(3)
         with c1:
@@ -445,31 +511,32 @@ def render_filtros(escritos: list, key_prefix: str) -> list:
                 "Más reciente primero",
                 "Más antiguo primero",
                 "Por solicitante (A-Z)",
-                "Por nombre (A-Z)",
                 "Por expediente (A-Z)",
                 "Días restantes (presentados)",
             ], key=f"{key_prefix}_orden")
         with c2:
-            estados_disp = sorted({e["estado"] for e in escritos})
-            estado_fil = st.multiselect("Estado", estados_disp,
-                                        default=estados_disp,
-                                        key=f"{key_prefix}_estado")
-        with c3:
             autores_disp = sorted({e["creador_nombre"] for e in escritos})
             autor_fil = st.multiselect("Solicitante", autores_disp,
                                        default=autores_disp,
                                        key=f"{key_prefix}_autor")
-        busqueda = st.text_input("Buscar por expediente o nombre",
-                                  placeholder="Ej: 09332-2024 o Demanda…",
-                                  key=f"{key_prefix}_busqueda")
+        with c3:
+            años_disp = sorted(
+                {_extraer_año(e.get("num_expediente") or "") for e in escritos},
+                reverse=True
+            )
+            año_fil = st.multiselect("Año", años_disp,
+                                     default=años_disp,
+                                     key=f"{key_prefix}_año")
 
     # Filtrar
+    q = busqueda.strip().lower()
     result = [e for e in escritos
-              if e["estado"] in estado_fil
-              and e["creador_nombre"] in autor_fil
-              and (not busqueda or
-                   busqueda.lower() in (e.get("num_expediente") or "").lower() or
-                   busqueda.lower() in e["nombre"].lower())]
+              if e["creador_nombre"] in autor_fil
+              and _extraer_año(e.get("num_expediente") or "") in año_fil
+              and (not q or
+                   q in (e.get("num_expediente") or "").lower() or
+                   q in (e.get("tipo_escrito") or "").lower() or
+                   q in (e.get("nombre") or "").lower())]
 
     # Ordenar
     if orden == "Más reciente primero":
@@ -701,14 +768,14 @@ def tab_escritos():
             f"Presentados ({len(presentados)})",
         ])
         with tab_pend:
-            _ = [render_escrito(e, False, False, show_delete=puede_eliminar) for e in pendientes]
-            if not pendientes: _empty_state("Sin escritos pendientes")
+            render_por_año(pendientes, False, False, puede_eliminar,
+                           "pendiente", f"sol_pend")
         with tab_obs:
-            _ = [render_escrito(e, False, False, show_delete=puede_eliminar) for e in observados]
-            if not observados: _empty_state("Sin escritos observados")
+            render_por_año(observados, False, False, puede_eliminar,
+                           "observado", f"sol_obs")
         with tab_pres:
-            _ = [render_escrito(e, False, False, show_delete=puede_eliminar) for e in presentados]
-            if not presentados: _empty_state("Sin escritos presentados")
+            render_por_año(presentados, False, False, puede_eliminar,
+                           "presentado", f"sol_pres")
 
     else:
         # ── Vista Revisor ──
@@ -751,14 +818,14 @@ def tab_escritos():
             f"Presentados ({len(presentados)})",
         ])
         with tab_pend:
-            _ = [render_escrito(e, True, True) for e in pendientes]
-            if not pendientes: _empty_state("Sin escritos pendientes")
+            render_por_año(pendientes, True, True, False,
+                           "pendiente", "rev_pend")
         with tab_obs:
-            _ = [render_escrito(e, True, False) for e in observados]
-            if not observados: _empty_state("Sin escritos observados")
+            render_por_año(observados, True, False, False,
+                           "observado", "rev_obs")
         with tab_pres:
-            _ = [render_escrito(e, True, False) for e in presentados]
-            if not presentados: _empty_state("Sin escritos presentados")
+            render_por_año(presentados, True, False, False,
+                           "presentado", "rev_pres")
 
 
 # ─────────────────────────────────────────────
