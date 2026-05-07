@@ -666,15 +666,16 @@ def tab_escritos():
         if observados:
             st.warning(f"Tienes **{len(observados)} escrito(s) con observaciones** del Revisor. Revísalos y sube la versión corregida.")
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            _section_header("Pendientes", len(pendientes), "yellow")
+        tab_pend, tab_obs, tab_pres = st.tabs([
+            f"Pendientes ({len(pendientes)})",
+            f"Observados ({len(observados)})",
+            f"Presentados ({len(presentados)})",
+        ])
+        with tab_pend:
             [render_escrito(e, False, False, show_delete=puede_eliminar) for e in pendientes] or [_empty_state("Sin escritos pendientes")]
-        with col2:
-            _section_header("Observados", len(observados), "red")
+        with tab_obs:
             [render_escrito(e, False, False, show_delete=puede_eliminar) for e in observados] or [_empty_state("Sin escritos observados")]
-        with col3:
-            _section_header("Presentados", len(presentados), "green")
+        with tab_pres:
             [render_escrito(e, False, False, show_delete=puede_eliminar) for e in presentados] or [_empty_state("Sin escritos presentados")]
 
     else:
@@ -712,15 +713,16 @@ def tab_escritos():
 
         st.divider()
 
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            _section_header("Pendientes", len(pendientes), "yellow")
+        tab_pend, tab_obs, tab_pres = st.tabs([
+            f"Pendientes ({len(pendientes)})",
+            f"Observados ({len(observados)})",
+            f"Presentados ({len(presentados)})",
+        ])
+        with tab_pend:
             [render_escrito(e, True, True) for e in pendientes] or [_empty_state("Sin escritos pendientes")]
-        with col2:
-            _section_header("Observados", len(observados), "red")
+        with tab_obs:
             [render_escrito(e, True, False) for e in observados] or [_empty_state("Sin escritos observados")]
-        with col3:
-            _section_header("Presentados", len(presentados), "green")
+        with tab_pres:
             [render_escrito(e, True, False) for e in presentados] or [_empty_state("Sin escritos presentados")]
 
 
@@ -944,32 +946,183 @@ def inject_css():
     st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+        /* ── BASE ── */
         html, body, [class*="css"] { font-family: 'Inter', sans-serif !important; }
         .stApp { background: #0c0e14; }
         header[data-testid="stHeader"] { background: #13151d; border-bottom: 1px solid #272b3d; }
         [data-testid="stSidebar"] { background: #13151d !important; border-right: 1px solid #272b3d !important; }
-        [data-testid="stTabs"] [data-baseweb="tab-list"] { background: #13151d !important; border-bottom: 1px solid #272b3d !important; gap: 4px; }
-        [data-testid="stTabs"] [data-baseweb="tab"] { background: transparent !important; color: #7a80a0 !important; border-radius: 6px 6px 0 0 !important; font-size: 13px !important; font-weight: 500 !important; padding: 8px 20px !important; }
-        [data-testid="stTabs"] [aria-selected="true"] { background: #191c27 !important; color: #dde1ef !important; border-bottom: 2px solid #5a67f2 !important; }
-        [data-testid="stTabPanel"] { background: transparent !important; padding-top: 20px !important; }
-        [data-testid="stTextInput"] input { background: #191c27 !important; border: 1px solid #272b3d !important; border-radius: 7px !important; color: #dde1ef !important; font-size: 13px !important; }
+
+        /* ── MAIN CONTENT: max-width + padding responsivo ── */
+        .main .block-container {
+            max-width: 100% !important;
+            padding: 1.5rem 1.5rem 2rem !important;
+        }
+
+        /* ── TABS ── */
+        [data-testid="stTabs"] [data-baseweb="tab-list"] {
+            background: #13151d !important;
+            border-bottom: 1px solid #272b3d !important;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+        [data-testid="stTabs"] [data-baseweb="tab"] {
+            background: transparent !important;
+            color: #7a80a0 !important;
+            border-radius: 6px 6px 0 0 !important;
+            font-size: 13px !important;
+            font-weight: 500 !important;
+            padding: 8px 16px !important;
+            white-space: nowrap;
+        }
+        [data-testid="stTabs"] [aria-selected="true"] {
+            background: #191c27 !important;
+            color: #dde1ef !important;
+            border-bottom: 2px solid #5a67f2 !important;
+        }
+        [data-testid="stTabPanel"] { background: transparent !important; padding-top: 16px !important; }
+
+        /* ── INPUTS ── */
+        [data-testid="stTextInput"] input {
+            background: #191c27 !important; border: 1px solid #272b3d !important;
+            border-radius: 7px !important; color: #dde1ef !important; font-size: 13px !important;
+        }
         [data-testid="stTextInput"] input:focus { border-color: #5a67f2 !important; }
-        [data-testid="stTextArea"] textarea { background: #191c27 !important; border: 1px solid #272b3d !important; border-radius: 7px !important; color: #dde1ef !important; font-size: 13px !important; }
-        [data-testid="stFileUploader"] { background: #191c27 !important; border: 1px dashed #313654 !important; border-radius: 8px !important; }
-        .stButton > button { background: #191c27 !important; border: 1px solid #272b3d !important; color: #7a80a0 !important; border-radius: 6px !important; font-size: 12px !important; font-weight: 500 !important; transition: all .18s !important; }
-        .stButton > button:hover { border-color: #3d4266 !important; color: #dde1ef !important; background: #1f2230 !important; }
-        .stButton > button[kind="primary"] { background: rgba(14,162,113,.08) !important; border: 1px solid rgba(14,162,113,.25) !important; color: #0ea271 !important; font-weight: 600 !important; }
+        [data-testid="stTextArea"] textarea {
+            background: #191c27 !important; border: 1px solid #272b3d !important;
+            border-radius: 7px !important; color: #dde1ef !important; font-size: 13px !important;
+        }
+        [data-testid="stFileUploader"] {
+            background: #191c27 !important; border: 1px dashed #313654 !important;
+            border-radius: 8px !important;
+        }
+
+        /* ── BUTTONS ── */
+        .stButton > button {
+            background: #191c27 !important; border: 1px solid #272b3d !important;
+            color: #7a80a0 !important; border-radius: 6px !important;
+            font-size: 12px !important; font-weight: 500 !important;
+            transition: all .18s !important;
+            width: 100% !important;
+            white-space: nowrap !important;
+            padding: 6px 10px !important;
+        }
+        .stButton > button:hover {
+            border-color: #3d4266 !important; color: #dde1ef !important;
+            background: #1f2230 !important;
+        }
+        .stButton > button[kind="primary"] {
+            background: rgba(14,162,113,.08) !important;
+            border: 1px solid rgba(14,162,113,.25) !important;
+            color: #0ea271 !important; font-weight: 600 !important;
+        }
         .stButton > button[kind="primary"]:hover { background: rgba(14,162,113,.15) !important; }
-        .stFormSubmitButton > button { background: #5a67f2 !important; color: white !important; border: none !important; font-weight: 600 !important; font-size: 13px !important; border-radius: 7px !important; }
+        .stFormSubmitButton > button {
+            background: #5a67f2 !important; color: white !important;
+            border: none !important; font-weight: 600 !important;
+            font-size: 13px !important; border-radius: 7px !important;
+        }
         .stFormSubmitButton > button:hover { background: #7b87f5 !important; }
-        [data-testid="stVerticalBlockBorderWrapper"] { background: #13151d !important; border: 1px solid #272b3d !important; border-radius: 10px !important; }
+
+        /* ── CONTAINERS / CARDS ── */
+        [data-testid="stVerticalBlockBorderWrapper"] {
+            background: #13151d !important; border: 1px solid #272b3d !important;
+            border-radius: 10px !important;
+        }
+        [data-testid="stForm"] {
+            background: #13151d !important; border: 1px solid #272b3d !important;
+            border-radius: 10px !important; padding: 16px !important;
+        }
+        [data-testid="stExpander"] {
+            background: #13151d !important; border: 1px solid #272b3d !important;
+            border-radius: 8px !important;
+        }
+
+        /* ── TYPOGRAPHY ── */
         p, label, div { color: #dde1ef; }
         h1, h2, h3 { color: #dde1ef !important; font-weight: 600 !important; }
         hr { border-color: #272b3d !important; }
         [data-testid="stAlert"] { border-radius: 8px !important; font-size: 13px !important; }
         #MainMenu, footer, [data-testid="stToolbar"] { visibility: hidden; }
-        [data-testid="stForm"] { background: #13151d !important; border: 1px solid #272b3d !important; border-radius: 10px !important; padding: 16px !important; }
-        [data-testid="stExpander"] { background: #13151d !important; border: 1px solid #272b3d !important; border-radius: 8px !important; }
+
+        /* ── COLUMNAS: colapsar en pantallas angostas ── */
+        /* < 900px: columnas de secciones se apilan */
+        @media (max-width: 900px) {
+            /* Todas las columnas de nivel superior se vuelven full-width */
+            [data-testid="stHorizontalBlock"] {
+                flex-direction: column !important;
+                gap: 0 !important;
+            }
+            [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] {
+                width: 100% !important;
+                min-width: 100% !important;
+                flex: 1 1 100% !important;
+            }
+            /* Padding del main más ajustado */
+            .main .block-container {
+                padding: 1rem 0.75rem 2rem !important;
+            }
+            /* Sidebar oculto por defecto en móvil (Streamlit lo maneja) */
+            [data-testid="stSidebar"] {
+                min-width: 0 !important;
+            }
+            /* Tabs más compactos */
+            [data-testid="stTabs"] [data-baseweb="tab"] {
+                padding: 7px 12px !important;
+                font-size: 12px !important;
+            }
+        }
+
+        /* < 640px: ajustes adicionales para teléfonos */
+        @media (max-width: 640px) {
+            .main .block-container {
+                padding: 0.75rem 0.5rem 2rem !important;
+            }
+            /* Títulos más pequeños */
+            h2 { font-size: 1.2rem !important; }
+            h3 { font-size: 1rem !important; }
+            /* Botones de acción en cada escrito: apilar */
+            [data-testid="stHorizontalBlock"] > [data-testid="stColumn"] .stButton > button {
+                font-size: 11px !important;
+                padding: 5px 8px !important;
+            }
+            /* Badges más pequeños */
+            span[style*="border-radius:10px"] {
+                font-size: 10px !important;
+                padding: 2px 7px !important;
+            }
+        }
+
+        /* ── SCROLL horizontal para tablas/badges en mobile ── */
+        [data-testid="stVerticalBlockBorderWrapper"] {
+            overflow-x: hidden !important;
+        }
+
+        /* ── Selectbox / multiselect ── */
+        [data-testid="stSelectbox"] > div,
+        [data-testid="stMultiSelect"] > div {
+            background: #191c27 !important;
+            border-color: #272b3d !important;
+            border-radius: 7px !important;
+            color: #dde1ef !important;
+        }
+        [data-baseweb="select"] { background: #191c27 !important; }
+        [data-baseweb="menu"] { background: #1e2130 !important; border: 1px solid #272b3d !important; }
+        [data-baseweb="option"] { background: #1e2130 !important; color: #dde1ef !important; }
+        [data-baseweb="option"]:hover { background: #252838 !important; }
+
+        /* ── Touch targets más grandes en móvil ── */
+        @media (max-width: 900px) {
+            .stButton > button {
+                min-height: 40px !important;
+                font-size: 13px !important;
+            }
+            [data-testid="stTextInput"] input,
+            [data-testid="stTextArea"] textarea {
+                font-size: 16px !important; /* evita zoom en iOS */
+                min-height: 44px !important;
+            }
+        }
     </style>
     """, unsafe_allow_html=True)
 
@@ -983,7 +1136,7 @@ def main():
         page_title            = "LexDocs — Gestor de Escritos",
         page_icon             = "⚖",
         layout                = "wide",
-        initial_sidebar_state = "expanded",
+        initial_sidebar_state = "auto",
     )
     inject_css()
     init_db()
