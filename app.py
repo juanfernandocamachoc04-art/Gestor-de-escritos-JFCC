@@ -501,15 +501,12 @@ def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: boo
     with st.container(border=True):
         c1, c2 = st.columns([3, 1])
         with c1:
-            exp   = e.get("num_expediente") or ""
-            tipo  = e.get("tipo_escrito") or ""
-            exp_html  = f'<span style="color:#7b87f5;font-weight:600;">{exp}</span>  ·  ' if exp else ""
-            tipo_html = f'<span style="color:#7a80a0;">{tipo}</span>' if tipo else ""
-            sub_line  = (exp_html + tipo_html).strip(" · ") if (exp or tipo) else ""
+            exp  = e.get("num_expediente") or e.get("nombre") or ""
+            tipo = e.get("tipo_escrito") or ""
             st.markdown(f"""
-                <div style="font-weight:600;font-size:13px;color:#dde1ef;">{e['nombre']}</div>
-                {f'<div style="font-size:11px;margin-top:3px;">{sub_line}</div>' if sub_line else ""}
-                <div style="font-size:11px;color:#4a5070;margin-top:2px;">{e['nombre_archivo']}</div>
+                <div style="font-weight:700;font-size:13px;color:#7b87f5;">{exp}</div>
+                {f'<div style="font-size:12px;color:#dde1ef;margin-top:2px;">{tipo}</div>' if tipo else ""}
+                <div style="font-size:11px;color:#4a5070;margin-top:3px;">{e['nombre_archivo']}</div>
             """, unsafe_allow_html=True)
         with c2:
             st.markdown(estado_badge(e["estado"], e.get("fecha_presentado_dt"), ver),
@@ -654,8 +651,6 @@ def tab_escritos():
         # ── Subir escrito ──
         st.markdown("### Subir nuevo escrito")
         with st.form("form_escrito", clear_on_submit=True):
-            nombre         = st.text_input("Nombre del escrito",
-                                           placeholder="Ej: Demanda ejecutiva – Caso 2024-087")
             c_exp, c_tipo  = st.columns(2)
             with c_exp:
                 num_expediente = st.text_input("Número de expediente / causa *",
@@ -666,9 +661,7 @@ def tab_escritos():
             uploaded = st.file_uploader("Archivo", help="PDF, imágenes, Word. Máximo 10 MB.")
             submitted = st.form_submit_button("Subir escrito")
             if submitted:
-                if not nombre.strip():
-                    st.error("Ingresa el nombre del escrito.")
-                elif not num_expediente.strip():
+                if not num_expediente.strip():
                     st.error("El número de expediente es obligatorio.")
                 elif uploaded is None:
                     st.error("Selecciona un archivo.")
@@ -676,7 +669,7 @@ def tab_escritos():
                     st.error("El archivo supera los 10 MB.")
                 else:
                     insertar_escrito(
-                        nombre         = nombre.strip(),
+                        nombre         = num_expediente.strip(),
                         num_expediente = num_expediente.strip(),
                         tipo_escrito   = tipo_escrito.strip(),
                         nombre_archivo = uploaded.name,
@@ -685,7 +678,7 @@ def tab_escritos():
                         creador        = st.session_state.username,
                         creador_nombre = st.session_state.nombre,
                     )
-                    st.success(f"Escrito **{nombre}** registrado correctamente.")
+                    st.success(f"Escrito **{num_expediente}** registrado correctamente.")
                     st.rerun()
 
         escritos       = get_escritos_usuario(st.session_state.username)
