@@ -579,7 +579,7 @@ def render_filtros(escritos: list, key_prefix: str) -> list:
     q = busqueda.strip().lower()
     result = [e for e in escritos
               if e["creador_nombre"] in autor_fil
-              and _extraer_año(e.get("num_expediente") or "") in año_fil
+              and (_get_año(e.get("num_expediente") or "") in año_fil if año_fil else True)
               and (not q or
                    q in (e.get("num_expediente") or "").lower() or
                    q in (e.get("tipo_escrito") or "").lower() or
