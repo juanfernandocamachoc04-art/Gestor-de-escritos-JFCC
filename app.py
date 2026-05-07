@@ -672,11 +672,14 @@ def tab_escritos():
             f"Presentados ({len(presentados)})",
         ])
         with tab_pend:
-            [render_escrito(e, False, False, show_delete=puede_eliminar) for e in pendientes] or [_empty_state("Sin escritos pendientes")]
+            _ = [render_escrito(e, False, False, show_delete=puede_eliminar) for e in pendientes]
+            if not pendientes: _empty_state("Sin escritos pendientes")
         with tab_obs:
-            [render_escrito(e, False, False, show_delete=puede_eliminar) for e in observados] or [_empty_state("Sin escritos observados")]
+            _ = [render_escrito(e, False, False, show_delete=puede_eliminar) for e in observados]
+            if not observados: _empty_state("Sin escritos observados")
         with tab_pres:
-            [render_escrito(e, False, False, show_delete=puede_eliminar) for e in presentados] or [_empty_state("Sin escritos presentados")]
+            _ = [render_escrito(e, False, False, show_delete=puede_eliminar) for e in presentados]
+            if not presentados: _empty_state("Sin escritos presentados")
 
     else:
         # ── Vista Revisor ──
@@ -719,11 +722,14 @@ def tab_escritos():
             f"Presentados ({len(presentados)})",
         ])
         with tab_pend:
-            [render_escrito(e, True, True) for e in pendientes] or [_empty_state("Sin escritos pendientes")]
+            _ = [render_escrito(e, True, True) for e in pendientes]
+            if not pendientes: _empty_state("Sin escritos pendientes")
         with tab_obs:
-            [render_escrito(e, True, False) for e in observados] or [_empty_state("Sin escritos observados")]
+            _ = [render_escrito(e, True, False) for e in observados]
+            if not observados: _empty_state("Sin escritos observados")
         with tab_pres:
-            [render_escrito(e, True, False) for e in presentados] or [_empty_state("Sin escritos presentados")]
+            _ = [render_escrito(e, True, False) for e in presentados]
+            if not presentados: _empty_state("Sin escritos presentados")
 
 
 # ─────────────────────────────────────────────
