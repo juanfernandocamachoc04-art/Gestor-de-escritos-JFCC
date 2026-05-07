@@ -16,22 +16,35 @@ from datetime import datetime, timedelta
 
 DIAS_EXPIRACION = 7
 
+# Estados válidos y sus propiedades visuales
+ESTADOS = {
+    "pendiente":  {"label": "Pendiente",  "color": "#e8a020", "bg": "rgba(232,160,32,.08)", "border": "rgba(232,160,32,.25)"},
+    "observado":  {"label": "Observado",  "color": "#ef4444", "bg": "rgba(239,68,68,.08)",  "border": "rgba(239,68,68,.25)"},
+    "presentado": {"label": "Presentado", "color": "#0ea271", "bg": "rgba(14,162,113,.08)", "border": "rgba(14,162,113,.22)"},
+}
+
+# Usuarios con permisos puede_filtrar para JFC y Revisor
 USERS = {
     "rafaela_b": {
-        "password": hashlib.sha256("123".encode()).hexdigest(),
-        "nombre":   "Rafaela B.",
-        "rol":      "Solicitante",
+        "password":      hashlib.sha256("123".encode()).hexdigest(),
+        "nombre":        "Rafaela B.",
+        "rol":           "Solicitante",
+        "puede_eliminar": False,
+        "puede_filtrar":  False,
     },
     "juan_fernando_c": {
-        "password": hashlib.sha256("456".encode()).hexdigest(),
-        "nombre":   "Juan Fernando C.",
-        "rol":      "Solicitante",
+        "password":      hashlib.sha256("456".encode()).hexdigest(),
+        "nombre":        "Juan Fernando C.",
+        "rol":           "Solicitante",
         "puede_eliminar": True,
+        "puede_filtrar":  True,
     },
     "juan_pablo_w": {
-        "password": hashlib.sha256("789".encode()).hexdigest(),
-        "nombre":   "Juan Pablo W.",
-        "rol":      "Revisor",
+        "password":      hashlib.sha256("789".encode()).hexdigest(),
+        "nombre":        "Juan Pablo W.",
+        "rol":           "Revisor",
+        "puede_eliminar": False,
+        "puede_filtrar":  True,
     },
 }
 
@@ -40,7 +53,6 @@ USERS = {
 # ─────────────────────────────────────────────
 
 def _get_db_url():
-    """Obtiene la URL de la base de datos desde secrets o variable de entorno."""
     try:
         return st.secrets["DATABASE_URL"]
     except Exception:
@@ -48,11 +60,6 @@ def _get_db_url():
 
 
 def get_conn():
-    """
-    Retorna una conexión activa.
-    - Si DATABASE_URL está configurada → PostgreSQL (Supabase).
-    - Si falla o no está → SQLite local (fallback).
-    """
     url = _get_db_url()
     if url:
         try:
@@ -61,10 +68,7 @@ def get_conn():
             conn.autocommit = False
             return conn, "pg"
         except Exception as e:
-            st.warning(
-                f"No se pudo conectar a la base de datos remota ({e}). "
-                "Verifica que DATABASE_URL esté configurado correctamente en los Secrets de Streamlit Cloud."
-            )
+            st.warning(f"No se pudo conectar a la base de datos remota ({e}).")
     import sqlite3
     conn = sqlite3.connect("lexdocs.db", check_same_thread=False)
     conn.row_factory = sqlite3.Row
@@ -72,27 +76,21 @@ def get_conn():
 
 
 def execute(sql, params=(), fetch=None):
-    """
-    Ejecuta una query de forma agnóstica al motor.
-    fetch: None | 'one' | 'all'
-    """
     conn, engine = get_conn()
-    # PostgreSQL usa %s, SQLite usa ?
     if engine == "pg":
         sql = sql.replace("?", "%s")
-        # AUTOINCREMENT → SERIAL en PostgreSQL
         sql = sql.replace("INTEGER PRIMARY KEY AUTOINCREMENT", "SERIAL PRIMARY KEY")
-
     try:
         cur = conn.cursor()
         cur.execute(sql, params)
         result = None
         if fetch == "one":
             row = cur.fetchone()
-            result = dict(row) if row else None
             if engine == "pg" and row:
                 cols = [d[0] for d in cur.description]
                 result = dict(zip(cols, row))
+            elif row:
+                result = dict(row)
         elif fetch == "all":
             rows = cur.fetchall()
             if engine == "pg":
@@ -114,7 +112,6 @@ def init_db():
     conn, engine = get_conn()
     try:
         cur = conn.cursor()
-
         if engine == "pg":
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS escritos (
@@ -128,7 +125,9 @@ def init_db():
                     estado              TEXT    NOT NULL DEFAULT 'pendiente',
                     fecha_creacion      TEXT    NOT NULL,
                     fecha_presentado    TEXT,
-                    fecha_presentado_dt TEXT
+                    fecha_presentado_dt TEXT,
+                    observacion         TEXT,
+                    version             INTEGER NOT NULL DEFAULT 1
                 )
             """)
             cur.execute("""
@@ -144,6 +143,18 @@ def init_db():
                     fecha_subida      TEXT    NOT NULL
                 )
             """)
+            # Migración PostgreSQL — agregar columnas si no existen
+            cur.execute("""
+                SELECT column_name FROM information_schema.columns
+                WHERE table_name = 'escritos'
+            """)
+            cols_pg = {r[0] for r in cur.fetchall()}
+            for col, ddl in [
+                ("observacion", "ALTER TABLE escritos ADD COLUMN observacion TEXT"),
+                ("version",     "ALTER TABLE escritos ADD COLUMN version INTEGER NOT NULL DEFAULT 1"),
+            ]:
+                if col not in cols_pg:
+                    cur.execute(ddl)
         else:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS escritos (
@@ -157,7 +168,9 @@ def init_db():
                     estado              TEXT    NOT NULL DEFAULT 'pendiente',
                     fecha_creacion      TEXT    NOT NULL,
                     fecha_presentado    TEXT,
-                    fecha_presentado_dt TEXT
+                    fecha_presentado_dt TEXT,
+                    observacion         TEXT,
+                    version             INTEGER NOT NULL DEFAULT 1
                 )
             """)
             cur.execute("""
@@ -173,16 +186,16 @@ def init_db():
                     fecha_subida      TEXT    NOT NULL
                 )
             """)
-            # Migración SQLite
             cols = {r[1] for r in cur.execute("PRAGMA table_info(escritos)")}
             for col, ddl in [
                 ("fecha_presentado_dt", "ALTER TABLE escritos ADD COLUMN fecha_presentado_dt TEXT"),
                 ("mime_type",           "ALTER TABLE escritos ADD COLUMN mime_type TEXT NOT NULL DEFAULT 'application/octet-stream'"),
                 ("creador_nombre",      "ALTER TABLE escritos ADD COLUMN creador_nombre TEXT NOT NULL DEFAULT ''"),
+                ("observacion",         "ALTER TABLE escritos ADD COLUMN observacion TEXT"),
+                ("version",             "ALTER TABLE escritos ADD COLUMN version INTEGER NOT NULL DEFAULT 1"),
             ]:
                 if col not in cols:
                     cur.execute(ddl)
-
         conn.commit()
     finally:
         conn.close()
@@ -202,28 +215,28 @@ def purgar_escritos_expirados():
     """, (limite,))
 
 
-def insertar_escrito(nombre, nombre_archivo, mime_type, file_data, creador, creador_nombre):
+def insertar_escrito(nombre, nombre_archivo, mime_type, file_data, creador, creador_nombre, version=1):
     fecha = datetime.now().strftime("%d %b %Y")
     conn, engine = get_conn()
     try:
         cur = conn.cursor()
         if engine == "pg":
+            from psycopg2 import Binary
             cur.execute("""
                 INSERT INTO escritos
                     (nombre, nombre_archivo, mime_type, file_data,
-                     creador, creador_nombre, estado, fecha_creacion)
-                VALUES (%s, %s, %s, %s, %s, %s, 'pendiente', %s)
-            """, (nombre, nombre_archivo, mime_type,
-                  psycopg2_binary(file_data, engine),
-                  creador, creador_nombre, fecha))
+                     creador, creador_nombre, estado, fecha_creacion, version)
+                VALUES (%s, %s, %s, %s, %s, %s, 'pendiente', %s, %s)
+            """, (nombre, nombre_archivo, mime_type, Binary(file_data),
+                  creador, creador_nombre, fecha, version))
         else:
             cur.execute("""
                 INSERT INTO escritos
                     (nombre, nombre_archivo, mime_type, file_data,
-                     creador, creador_nombre, estado, fecha_creacion)
-                VALUES (?, ?, ?, ?, ?, ?, 'pendiente', ?)
+                     creador, creador_nombre, estado, fecha_creacion, version)
+                VALUES (?, ?, ?, ?, ?, ?, 'pendiente', ?, ?)
             """, (nombre, nombre_archivo, mime_type, file_data,
-                  creador, creador_nombre, fecha))
+                  creador, creador_nombre, fecha, version))
         conn.commit()
     finally:
         conn.close()
@@ -236,9 +249,18 @@ def marcar_presentado(id_escrito):
         UPDATE escritos
         SET estado = 'presentado',
             fecha_presentado    = ?,
-            fecha_presentado_dt = ?
+            fecha_presentado_dt = ?,
+            observacion         = NULL
         WHERE id = ?
     """, (fecha_legible, fecha_iso, id_escrito))
+
+
+def marcar_observado(id_escrito, observacion: str):
+    execute("""
+        UPDATE escritos
+        SET estado = 'observado', observacion = ?
+        WHERE id = ?
+    """, (observacion, id_escrito))
 
 
 def eliminar_escrito(id_escrito):
@@ -249,7 +271,8 @@ def get_escritos_usuario(username):
     return execute("""
         SELECT id, nombre, nombre_archivo, mime_type, file_data,
                creador, creador_nombre, estado,
-               fecha_creacion, fecha_presentado, fecha_presentado_dt
+               fecha_creacion, fecha_presentado, fecha_presentado_dt,
+               observacion, version
         FROM escritos
         WHERE creador = ?
         ORDER BY id DESC
@@ -260,7 +283,8 @@ def get_todos_escritos():
     return execute("""
         SELECT id, nombre, nombre_archivo, mime_type, file_data,
                creador, creador_nombre, estado,
-               fecha_creacion, fecha_presentado, fecha_presentado_dt
+               fecha_creacion, fecha_presentado, fecha_presentado_dt,
+               observacion, version
         FROM escritos
         ORDER BY id DESC
     """, fetch="all") or []
@@ -276,13 +300,13 @@ def insertar_modelo(nombre, descripcion, nombre_archivo, mime_type, file_data, s
     try:
         cur = conn.cursor()
         if engine == "pg":
+            from psycopg2 import Binary
             cur.execute("""
                 INSERT INTO modelos
                     (nombre, descripcion, nombre_archivo, mime_type, file_data,
                      subido_por, subido_por_nombre, fecha_subida)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            """, (nombre, descripcion, nombre_archivo, mime_type,
-                  psycopg2_binary(file_data, engine),
+            """, (nombre, descripcion, nombre_archivo, mime_type, Binary(file_data),
                   subido_por, subido_por_nombre, fecha))
         else:
             cur.execute("""
@@ -311,28 +335,14 @@ def eliminar_modelo(id_modelo):
 
 
 # ─────────────────────────────────────────────
-# HELPER: binario para PostgreSQL
+# HELPERS
 # ─────────────────────────────────────────────
 
-def psycopg2_binary(data: bytes, engine: str):
-    if engine == "pg":
-        from psycopg2 import Binary
-        return Binary(data)
-    return data
-
-
 def to_bytes(val) -> bytes:
-    """Normaliza file_data a bytes independientemente del motor."""
-    if isinstance(val, memoryview):
-        return bytes(val)
-    if isinstance(val, (bytearray,)):
+    if isinstance(val, (memoryview, bytearray)):
         return bytes(val)
     return val
 
-
-# ─────────────────────────────────────────────
-# AUTENTICACIÓN
-# ─────────────────────────────────────────────
 
 def verificar_credenciales(username, password):
     if username not in USERS:
@@ -340,72 +350,41 @@ def verificar_credenciales(username, password):
     return USERS[username]["password"] == hashlib.sha256(password.encode()).hexdigest()
 
 
-def login_form():
-    col1, col2, col3 = st.columns([1, 2, 1])
-    with col2:
-        st.markdown("""
-            <div style="margin-top:60px;">
-                <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
-                    <div style="width:32px;height:32px;background:#5a67f2;border-radius:7px;
-                                display:flex;align-items:center;justify-content:center;">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
-                             stroke="white" stroke-width="2" stroke-linecap="round">
-                            <line x1="12" y1="2" x2="12" y2="22"/>
-                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                        </svg>
-                    </div>
-                    <span style="font-family:Georgia,serif;font-size:22px;font-weight:600;color:#dde1ef;">
-                        Lex<span style="color:#7a80a0;font-weight:400;">Docs</span>
-                    </span>
-                </div>
-                <div style="font-size:18px;font-weight:600;color:#dde1ef;margin-bottom:4px;">
-                    Iniciar sesión
-                </div>
-                <div style="font-size:12px;color:#7a80a0;margin-bottom:2px;">
-                    Gestión de escritos legales - Banco Guayaquil-Consulegis
-                </div>
-                <div style="font-size:11px;color:#4a5070;margin-bottom:24px;">
-                    Desarrollado por: Juan Fernando Camacho
-                </div>
-            </div>
-        """, unsafe_allow_html=True)
-
-        with st.form("login_form"):
-            username  = st.text_input("Usuario", placeholder="ej. rafaela_b")
-            password  = st.text_input("Contraseña", type="password", placeholder="••••••••")
-            submitted = st.form_submit_button("Ingresar al sistema", use_container_width=True)
-            if submitted:
-                if verificar_credenciales(username, password):
-                    st.session_state.logged_in = True
-                    st.session_state.username  = username
-                    st.session_state.nombre    = USERS[username]["nombre"]
-                    st.session_state.rol       = USERS[username]["rol"]
-                    st.rerun()
-                else:
-                    st.error("Usuario o contraseña incorrectos.")
+def dias_restantes(fecha_presentado_dt: str) -> int:
+    try:
+        f = datetime.strptime(fecha_presentado_dt, "%Y-%m-%d")
+        return max(0, (f + timedelta(days=DIAS_EXPIRACION) - datetime.now()).days)
+    except Exception:
+        return DIAS_EXPIRACION
 
 
-# ─────────────────────────────────────────────
-# UTILIDADES UI
-# ─────────────────────────────────────────────
+def estado_badge(estado: str, fecha_presentado_dt=None, version=1) -> str:
+    cfg = ESTADOS.get(estado, ESTADOS["pendiente"])
+    extra = ""
+    if estado == "presentado" and fecha_presentado_dt:
+        dias = dias_restantes(fecha_presentado_dt)
+        ec = "#ef4444" if dias <= 2 else "#e8a020" if dias <= 4 else "#0ea271"
+        extra = f'&nbsp;<span style="font-size:10px;color:{ec};font-weight:500;">expira en {dias}d</span>'
+    if version > 1:
+        extra += f'&nbsp;<span style="font-size:10px;color:#7a80a0;">v{version}</span>'
+    return (f'<span style="background:{cfg["bg"]};color:{cfg["color"]};'
+            f'border:1px solid {cfg["border"]};border-radius:10px;'
+            f'padding:2px 10px;font-size:11px;font-weight:600;">{cfg["label"]}</span>{extra}')
+
 
 def render_preview(file_data: bytes, mime_type: str, filename: str):
-    """Renderiza vista previa usando componentes nativos de Streamlit."""
     import streamlit.components.v1 as components
     if mime_type == "application/pdf":
         b64 = base64.b64encode(file_data).decode()
-        pdf_html = f"""
-            <iframe
-                src="data:application/pdf;base64,{b64}"
-                width="100%" height="600"
-                style="border:1px solid #272b3d;border-radius:8px;">
-            </iframe>"""
-        components.html(pdf_html, height=620, scrolling=False)
+        components.html(
+            f'<iframe src="data:application/pdf;base64,{b64}" width="100%" height="600" '
+            f'style="border:1px solid #272b3d;border-radius:8px;"></iframe>',
+            height=620, scrolling=False)
     elif mime_type.startswith("image/"):
         st.image(file_data, use_container_width=True)
     else:
         ext = filename.rsplit(".", 1)[-1].upper() if "." in filename else "archivo"
-        st.info(f"Vista previa no disponible para archivos **{ext}**. Usa el botón Descargar para abrirlo.")
+        st.info(f"Vista previa no disponible para archivos **{ext}**. Usa Descargar para abrirlo.")
 
 
 def download_link(file_data: bytes, filename: str, mime_type: str, label: str = "Descargar"):
@@ -423,36 +402,85 @@ def download_link(file_data: bytes, filename: str, mime_type: str, label: str = 
             </svg>{label}</a>""", unsafe_allow_html=True)
 
 
-def dias_restantes(fecha_presentado_dt: str) -> int:
-    try:
-        f      = datetime.strptime(fecha_presentado_dt, "%Y-%m-%d")
-        expira = f + timedelta(days=DIAS_EXPIRACION)
-        return max(0, (expira - datetime.now()).days)
-    except Exception:
-        return DIAS_EXPIRACION
+def _section_header(label, count, color):
+    cfg = {
+        "yellow": ("#e8a020","rgba(232,160,32,.08)","rgba(232,160,32,.25)","rgba(232,160,32,.6)"),
+        "green":  ("#0ea271","rgba(14,162,113,.08)", "rgba(14,162,113,.22)", "rgba(14,162,113,.6)"),
+        "red":    ("#ef4444","rgba(239,68,68,.08)",  "rgba(239,68,68,.25)",  "rgba(239,68,68,.6)"),
+    }[color]
+    st.markdown(f"""
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+            <div style="width:7px;height:7px;border-radius:50%;
+                        background:{cfg[0]};box-shadow:0 0 5px {cfg[3]};"></div>
+            <span style="font-size:13px;font-weight:600;">Escritos {label}</span>
+            <span style="background:{cfg[1]};color:{cfg[0]};border:1px solid {cfg[2]};
+                         border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;">{count}</span>
+        </div>""", unsafe_allow_html=True)
 
 
-def estado_badge(estado: str, fecha_presentado_dt=None) -> str:
-    if estado == "pendiente":
-        return """<span style="background:rgba(232,160,32,.08);color:#e8a020;
-            border:1px solid rgba(232,160,32,.25);border-radius:10px;
-            padding:2px 10px;font-size:11px;font-weight:600;">Pendiente</span>"""
-    dias = dias_restantes(fecha_presentado_dt) if fecha_presentado_dt else DIAS_EXPIRACION
-    color_exp = "#ef4444" if dias <= 2 else "#e8a020" if dias <= 4 else "#0ea271"
-    return f"""<span style="background:rgba(14,162,113,.08);color:#0ea271;
-        border:1px solid rgba(14,162,113,.22);border-radius:10px;
-        padding:2px 10px;font-size:11px;font-weight:600;">Presentado</span>
-        &nbsp;<span style="font-size:10px;color:{color_exp};font-weight:500;">
-        expira en {dias}d</span>"""
+def _empty_state(msg):
+    st.markdown(f"""<div style="text-align:center;padding:28px 16px;color:#4a5070;
+                    font-size:12.5px;border:1px solid #272b3d;border-radius:8px;">{msg}</div>""",
+                unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────
-# PESTAÑA: ESCRITOS
+# FILTROS / ORDENAMIENTO
+# ─────────────────────────────────────────────
+
+def render_filtros(escritos: list, key_prefix: str) -> list:
+    """Muestra controles de filtro y retorna la lista ordenada/filtrada."""
+    with st.expander("Filtros y ordenamiento", expanded=False):
+        c1, c2, c3 = st.columns(3)
+        with c1:
+            orden = st.selectbox("Ordenar por", [
+                "Más reciente primero",
+                "Más antiguo primero",
+                "Por solicitante (A-Z)",
+                "Por nombre (A-Z)",
+                "Días restantes (presentados)",
+            ], key=f"{key_prefix}_orden")
+        with c2:
+            estados_disp = sorted({e["estado"] for e in escritos})
+            estado_fil = st.multiselect("Estado", estados_disp,
+                                        default=estados_disp,
+                                        key=f"{key_prefix}_estado")
+        with c3:
+            autores_disp = sorted({e["creador_nombre"] for e in escritos})
+            autor_fil = st.multiselect("Solicitante", autores_disp,
+                                       default=autores_disp,
+                                       key=f"{key_prefix}_autor")
+
+    # Filtrar
+    result = [e for e in escritos
+              if e["estado"] in estado_fil
+              and e["creador_nombre"] in autor_fil]
+
+    # Ordenar
+    if orden == "Más reciente primero":
+        result = sorted(result, key=lambda x: x["id"], reverse=True)
+    elif orden == "Más antiguo primero":
+        result = sorted(result, key=lambda x: x["id"])
+    elif orden == "Por solicitante (A-Z)":
+        result = sorted(result, key=lambda x: x["creador_nombre"])
+    elif orden == "Por nombre (A-Z)":
+        result = sorted(result, key=lambda x: x["nombre"].lower())
+    elif orden == "Días restantes (presentados)":
+        result = sorted(result, key=lambda x: dias_restantes(x.get("fecha_presentado_dt") or "9999-12-31"))
+
+    return result
+
+
+# ─────────────────────────────────────────────
+# RENDER ESCRITO
 # ─────────────────────────────────────────────
 
 def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: bool = False):
     fd  = to_bytes(e["file_data"])
     eid = e["id"]
+    ver = e.get("version") or 1
+    obs = e.get("observacion")
+
     with st.container(border=True):
         c1, c2 = st.columns([3, 1])
         with c1:
@@ -461,22 +489,39 @@ def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: boo
                 <div style="font-size:11px;color:#4a5070;margin-top:2px;">{e['nombre_archivo']}</div>
             """, unsafe_allow_html=True)
         with c2:
-            st.markdown(estado_badge(e["estado"], e.get("fecha_presentado_dt")),
+            st.markdown(estado_badge(e["estado"], e.get("fecha_presentado_dt"), ver),
                         unsafe_allow_html=True)
+
+        # Observación visible para el solicitante
+        if obs and e["estado"] == "observado":
+            st.markdown(f"""
+                <div style="margin:8px 0;padding:10px 14px;
+                            background:rgba(239,68,68,.07);
+                            border:1px solid rgba(239,68,68,.25);
+                            border-radius:7px;font-size:12px;color:#fca5a5;">
+                    <strong>Observación del Revisor:</strong> {obs}
+                </div>
+            """, unsafe_allow_html=True)
 
         meta = [f"Subido: {e['fecha_creacion']}"]
         if show_author:
             meta.append(f"Por: {e['creador_nombre']}")
-        if e["fecha_presentado"]:
+        if e.get("fecha_presentado"):
             meta.append(f"Presentado: {e['fecha_presentado']}")
         st.markdown(
             f"<div style='font-size:11px;color:#7a80a0;margin-bottom:8px;'>{'  ·  '.join(meta)}</div>",
             unsafe_allow_html=True)
 
-        # Construir columnas dinámicamente según botones activos
+        # ── Botones principales ──
         n_extra = sum([show_mark, show_delete])
-        if n_extra == 2:
-            bcols = st.columns([1, 1, 1, 1, 1])
+        # show_mark implica también el botón "Observar" para el Revisor
+        if show_mark:
+            n_extra += 1  # botón extra "Observar"
+
+        if n_extra >= 3:
+            bcols = st.columns([1, 1, 1, 1, 1, 1])
+        elif n_extra == 2:
+            bcols = st.columns([1, 1, 1, 1, 2])
         elif n_extra == 1:
             bcols = st.columns([1, 1, 1, 2])
         else:
@@ -492,10 +537,14 @@ def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: boo
         col_idx = 2
         if show_mark:
             with bcols[col_idx]:
-                if st.button("Marcar presentado", key=f"mark_{eid}",
+                if st.button("Presentado", key=f"mark_{eid}",
                              type="primary", use_container_width=True):
                     marcar_presentado(eid)
                     st.rerun()
+            col_idx += 1
+            with bcols[col_idx]:
+                if st.button("Observar", key=f"obs_{eid}", use_container_width=True):
+                    st.session_state[f"form_obs_{eid}"] = not st.session_state.get(f"form_obs_{eid}", False)
             col_idx += 1
 
         if show_delete:
@@ -503,7 +552,27 @@ def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: boo
                 if st.button("Eliminar", key=f"del_e_{eid}", use_container_width=True):
                     st.session_state[f"confirm_del_e_{eid}"] = True
 
-        # Confirmación de borrado
+        # ── Formulario de observación (Revisor) ──
+        if st.session_state.get(f"form_obs_{eid}", False):
+            with st.form(key=f"form_obs_submit_{eid}"):
+                obs_text = st.text_area("Escribe la observación para el solicitante",
+                                        placeholder="Ej: Falta la firma en la página 3...",
+                                        height=90)
+                s1, s2 = st.columns(2)
+                with s1:
+                    if st.form_submit_button("Enviar observación", use_container_width=True):
+                        if obs_text.strip():
+                            marcar_observado(eid, obs_text.strip())
+                            st.session_state.pop(f"form_obs_{eid}", None)
+                            st.rerun()
+                        else:
+                            st.error("Escribe una observación antes de enviar.")
+                with s2:
+                    if st.form_submit_button("Cancelar", use_container_width=True):
+                        st.session_state.pop(f"form_obs_{eid}", None)
+                        st.rerun()
+
+        # ── Confirmación de borrado ──
         if show_delete and st.session_state.get(f"confirm_del_e_{eid}", False):
             st.warning(f"¿Eliminar **{e['nombre']}** permanentemente? Esta acción no se puede deshacer.")
             cc1, cc2 = st.columns(2)
@@ -518,14 +587,46 @@ def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: boo
                     st.session_state.pop(f"confirm_del_e_{eid}", None)
                     st.rerun()
 
+        # ── Formulario corrección (Solicitante, estado observado) ──
+        if e["estado"] == "observado" and not show_mark:
+            with st.form(key=f"form_corr_{eid}", clear_on_submit=True):
+                st.markdown("<div style='font-size:12px;font-weight:600;color:#dde1ef;margin-bottom:6px;'>Subir versión corregida</div>",
+                            unsafe_allow_html=True)
+                nuevo_archivo = st.file_uploader("Archivo corregido", key=f"fu_corr_{eid}",
+                                                  help="Reemplaza el archivo actual. Máximo 10 MB.")
+                if st.form_submit_button("Enviar corrección", use_container_width=False):
+                    if nuevo_archivo is None:
+                        st.error("Selecciona el archivo corregido.")
+                    elif nuevo_archivo.size > 10 * 1024 * 1024:
+                        st.error("El archivo supera los 10 MB.")
+                    else:
+                        insertar_escrito(
+                            nombre         = e["nombre"],
+                            nombre_archivo = nuevo_archivo.name,
+                            mime_type      = nuevo_archivo.type or "application/octet-stream",
+                            file_data      = nuevo_archivo.read(),
+                            creador        = e["creador"],
+                            creador_nombre = e["creador_nombre"],
+                            version        = ver + 1,
+                        )
+                        eliminar_escrito(eid)
+                        st.rerun()
+
+        # ── Vista previa ──
         if st.session_state.get(f"prev_e_{eid}", False):
             render_preview(fd, e["mime_type"], e["nombre_archivo"])
 
 
+# ─────────────────────────────────────────────
+# PESTAÑA: ESCRITOS
+# ─────────────────────────────────────────────
+
 def tab_escritos():
-    is_revisor = st.session_state.rol == "Revisor"
+    is_revisor    = st.session_state.rol == "Revisor"
+    puede_filtrar = USERS.get(st.session_state.username, {}).get("puede_filtrar", False)
 
     if not is_revisor:
+        # ── Subir escrito ──
         st.markdown("### Subir nuevo escrito")
         with st.form("form_escrito", clear_on_submit=True):
             nombre   = st.text_input("Nombre del escrito",
@@ -551,46 +652,74 @@ def tab_escritos():
                     st.success(f"Escrito **{nombre}** registrado correctamente.")
                     st.rerun()
 
-        escritos    = get_escritos_usuario(st.session_state.username)
-        pendientes  = [e for e in escritos if e["estado"] == "pendiente"]
-        presentados = [e for e in escritos if e["estado"] == "presentado"]
+        escritos       = get_escritos_usuario(st.session_state.username)
         puede_eliminar = USERS.get(st.session_state.username, {}).get("puede_eliminar", False)
-        col1, col2  = st.columns(2)
+
+        if puede_filtrar and escritos:
+            escritos = render_filtros(escritos, key_prefix="sol")
+
+        pendientes  = [e for e in escritos if e["estado"] == "pendiente"]
+        observados  = [e for e in escritos if e["estado"] == "observado"]
+        presentados = [e for e in escritos if e["estado"] == "presentado"]
+
+        # Alerta si hay escritos observados
+        if observados:
+            st.warning(f"Tienes **{len(observados)} escrito(s) con observaciones** del Revisor. Revísalos y sube la versión corregida.")
+
+        col1, col2, col3 = st.columns(3)
         with col1:
             _section_header("Pendientes", len(pendientes), "yellow")
             [render_escrito(e, False, False, show_delete=puede_eliminar) for e in pendientes] or [_empty_state("Sin escritos pendientes")]
         with col2:
+            _section_header("Observados", len(observados), "red")
+            [render_escrito(e, False, False, show_delete=puede_eliminar) for e in observados] or [_empty_state("Sin escritos observados")]
+        with col3:
             _section_header("Presentados", len(presentados), "green")
             [render_escrito(e, False, False, show_delete=puede_eliminar) for e in presentados] or [_empty_state("Sin escritos presentados")]
 
     else:
-        todos       = get_todos_escritos()
+        # ── Vista Revisor ──
+        todos = get_todos_escritos()
+
+        if puede_filtrar and todos:
+            todos = render_filtros(todos, key_prefix="rev")
+
         pendientes  = [e for e in todos if e["estado"] == "pendiente"]
+        observados  = [e for e in todos if e["estado"] == "observado"]
         presentados = [e for e in todos if e["estado"] == "presentado"]
 
-        ca, cb, cc = st.columns([3, 1, 1])
+        ca, cb, cc, cd = st.columns([3, 1, 1, 1])
         with ca:
             st.markdown("""
                 <div style="font-size:14px;font-weight:600;color:#dde1ef;">Panel del Revisor</div>
-                <div style="font-size:12px;color:#7a80a0;">Revisa los escritos de todos los solicitantes.</div>
+                <div style="font-size:12px;color:#7a80a0;">Gestiona los escritos de todos los solicitantes.</div>
             """, unsafe_allow_html=True)
         with cb:
             st.markdown(f"""<div style="text-align:center;padding:6px 0;">
-                <div style="font-size:24px;font-weight:700;color:#e8a020;">{len(pendientes)}</div>
+                <div style="font-size:22px;font-weight:700;color:#e8a020;">{len(pendientes)}</div>
                 <div style="font-size:10px;color:#7a80a0;text-transform:uppercase;">Pendientes</div>
             </div>""", unsafe_allow_html=True)
         with cc:
             st.markdown(f"""<div style="text-align:center;padding:6px 0;">
-                <div style="font-size:24px;font-weight:700;color:#0ea271;">{len(presentados)}</div>
+                <div style="font-size:22px;font-weight:700;color:#ef4444;">{len(observados)}</div>
+                <div style="font-size:10px;color:#7a80a0;text-transform:uppercase;">Observados</div>
+            </div>""", unsafe_allow_html=True)
+        with cd:
+            st.markdown(f"""<div style="text-align:center;padding:6px 0;">
+                <div style="font-size:22px;font-weight:700;color:#0ea271;">{len(presentados)}</div>
                 <div style="font-size:10px;color:#7a80a0;text-transform:uppercase;">Presentados</div>
             </div>""", unsafe_allow_html=True)
 
         st.divider()
-        col1, col2 = st.columns(2)
+
+        col1, col2, col3 = st.columns(3)
         with col1:
             _section_header("Pendientes", len(pendientes), "yellow")
             [render_escrito(e, True, True) for e in pendientes] or [_empty_state("Sin escritos pendientes")]
         with col2:
+            _section_header("Observados", len(observados), "red")
+            [render_escrito(e, True, False) for e in observados] or [_empty_state("Sin escritos observados")]
+        with col3:
             _section_header("Presentados", len(presentados), "green")
             [render_escrito(e, True, False) for e in presentados] or [_empty_state("Sin escritos presentados")]
 
@@ -693,8 +822,7 @@ def tab_modelos():
                             st.session_state.pop(f"confirm_del_{m['id']}", None)
                             st.rerun()
                     with cc2:
-                        if st.button("Cancelar", key=f"no_del_{m['id']}",
-                                     use_container_width=True):
+                        if st.button("Cancelar", key=f"no_del_{m['id']}", use_container_width=True):
                             st.session_state.pop(f"confirm_del_{m['id']}", None)
                             st.rerun()
 
@@ -703,25 +831,51 @@ def tab_modelos():
 
 
 # ─────────────────────────────────────────────
-# HELPERS UI
+# LOGIN
 # ─────────────────────────────────────────────
 
-def _section_header(label, count, color):
-    c = {"yellow": ("#e8a020","rgba(232,160,32,.08)","rgba(232,160,32,.25)","rgba(232,160,32,.6)"),
-         "green":  ("#0ea271","rgba(14,162,113,.08)", "rgba(14,162,113,.22)", "rgba(14,162,113,.6)")}[color]
-    st.markdown(f"""
-        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-            <div style="width:7px;height:7px;border-radius:50%;background:{c[0]};box-shadow:0 0 5px {c[3]};"></div>
-            <span style="font-size:13px;font-weight:600;">Escritos {label}</span>
-            <span style="background:{c[1]};color:{c[0]};border:1px solid {c[2]};
-                         border-radius:9px;padding:1px 8px;font-size:10px;font-weight:700;">{count}</span>
-        </div>""", unsafe_allow_html=True)
-
-
-def _empty_state(msg):
-    st.markdown(f"""<div style="text-align:center;padding:28px 16px;color:#4a5070;
-                    font-size:12.5px;border:1px solid #272b3d;border-radius:8px;">{msg}</div>""",
-                unsafe_allow_html=True)
+def login_form():
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("""
+            <div style="margin-top:60px;">
+                <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px;">
+                    <div style="width:32px;height:32px;background:#5a67f2;border-radius:7px;
+                                display:flex;align-items:center;justify-content:center;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                             stroke="white" stroke-width="2" stroke-linecap="round">
+                            <line x1="12" y1="2" x2="12" y2="22"/>
+                            <path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                        </svg>
+                    </div>
+                    <span style="font-family:Georgia,serif;font-size:22px;font-weight:600;color:#dde1ef;">
+                        Lex<span style="color:#7a80a0;font-weight:400;">Docs</span>
+                    </span>
+                </div>
+                <div style="font-size:18px;font-weight:600;color:#dde1ef;margin-bottom:4px;">
+                    Iniciar sesión
+                </div>
+                <div style="font-size:12px;color:#7a80a0;margin-bottom:2px;">
+                    Gestión de escritos legales - Banco Guayaquil-Consulegis
+                </div>
+                <div style="font-size:11px;color:#4a5070;margin-bottom:24px;">
+                    Desarrollado por: Juan Fernando Camacho
+                </div>
+            </div>
+        """, unsafe_allow_html=True)
+        with st.form("login_form"):
+            username  = st.text_input("Usuario", placeholder="ej. rafaela_b")
+            password  = st.text_input("Contraseña", type="password", placeholder="••••••••")
+            submitted = st.form_submit_button("Ingresar al sistema", use_container_width=True)
+            if submitted:
+                if verificar_credenciales(username, password):
+                    st.session_state.logged_in = True
+                    st.session_state.username  = username
+                    st.session_state.nombre    = USERS[username]["nombre"]
+                    st.session_state.rol       = USERS[username]["rol"]
+                    st.rerun()
+                else:
+                    st.error("Usuario o contraseña incorrectos.")
 
 
 # ─────────────────────────────────────────────
@@ -815,6 +969,7 @@ def inject_css():
         [data-testid="stAlert"] { border-radius: 8px !important; font-size: 13px !important; }
         #MainMenu, footer, [data-testid="stToolbar"] { visibility: hidden; }
         [data-testid="stForm"] { background: #13151d !important; border: 1px solid #272b3d !important; border-radius: 10px !important; padding: 16px !important; }
+        [data-testid="stExpander"] { background: #13151d !important; border: 1px solid #272b3d !important; border-radius: 8px !important; }
     </style>
     """, unsafe_allow_html=True)
 
