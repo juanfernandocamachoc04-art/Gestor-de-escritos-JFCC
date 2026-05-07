@@ -285,13 +285,6 @@ def marcar_observado(id_escrito, observacion: str):
     """, (observacion, id_escrito))
 
 
-def asignar_carpeta(id_escrito, año: str):
-    """Asigna manualmente la carpeta de año a un escrito."""
-    execute("""
-        UPDATE escritos SET carpeta_anio = ? WHERE id = ?
-    """, (año.strip() if año.strip() else None, id_escrito))
-
-
 def eliminar_escrito(id_escrito):
     execute("DELETE FROM escritos WHERE id = ?", (id_escrito,))
 
@@ -476,24 +469,6 @@ def _empty_state(msg):
                 unsafe_allow_html=True)
 
 
-def _extraer_año(num_expediente: str) -> str:
-    """Extrae el año del expediente. Ej: 09332-2024-00262 → 2024. Si no detecta → None."""
-    import re
-    partes = re.split(r"[-/.]", (num_expediente or "").strip())
-    for p in partes:
-        if len(p) == 4 and p.isdigit() and 1990 <= int(p) <= 2099:
-            return p
-    return None
-
-
-def _get_carpeta(e: dict) -> str:
-    """Retorna la carpeta efectiva: manual > auto-detectada > None (sin carpeta)."""
-    manual = (e.get("carpeta_anio") or "").strip()
-    if manual:
-        return manual
-    return _extraer_año(e.get("num_expediente") or e.get("nombre") or "")
-
-
 def render_por_año(escritos: list, show_author: bool, show_mark: bool,
                    show_delete: bool, estado: str, key_suffix: str,
                    puede_asignar: bool = False):
@@ -586,8 +561,14 @@ def render_filtros(escritos: list, key_prefix: str) -> list:
                                        default=autores_disp,
                                        key=f"{key_prefix}_autor")
         with c3:
+            import re
+            def _get_año(exp):
+                for p in re.split(r"[-/.]", (exp or "").strip()):
+                    if len(p) == 4 and p.isdigit() and 1990 <= int(p) <= 2099:
+                        return p
+                return None
             años_disp = sorted(
-                {c for e in escritos if (c := _get_carpeta(e))},
+                {a for e in escritos if (a := _get_año(e.get("num_expediente") or ""))},
                 reverse=True
             )
             año_fil = st.multiselect("Año", años_disp,
@@ -625,8 +606,7 @@ def render_filtros(escritos: list, key_prefix: str) -> list:
 # RENDER ESCRITO
 # ─────────────────────────────────────────────
 
-def render_escrito(e: dict, show_author: bool, show_mark: bool,
-                   show_delete: bool = False, puede_asignar: bool = False):
+def render_escrito(e: dict, show_author: bool, show_mark: bool, show_delete: bool = False):
     fd  = to_bytes(e["file_data"])
     eid = e["id"]
     ver = e.get("version") or 1
@@ -768,36 +748,6 @@ def render_escrito(e: dict, show_author: bool, show_mark: bool,
                         eliminar_escrito(eid)
                         st.rerun()
 
-        # ── Asignar carpeta manualmente ──
-        if puede_asignar:
-            carpeta_actual = _get_carpeta(e)
-            lbl_btn = f"Carpeta: {carpeta_actual}" if carpeta_actual else "Asignar carpeta"
-            if st.button(lbl_btn, key=f"btn_carp_{eid}", use_container_width=False):
-                st.session_state[f"form_carp_{eid}"] = not st.session_state.get(f"form_carp_{eid}", False)
-
-            if st.session_state.get(f"form_carp_{eid}", False):
-                año_actual = (e.get("carpeta_anio") or "").strip()
-                año_options = [str(y) for y in range(2030, 1989, -1)]
-                idx = año_options.index(año_actual) if año_actual in año_options else 0
-                with st.form(key=f"form_carp_submit_{eid}"):
-                    nuevo_año = st.selectbox(
-                        "Selecciona el año de la carpeta",
-                        options=["— Sin carpeta —"] + año_options,
-                        index=0 if not año_actual else año_options.index(año_actual) + 1,
-                        key=f"sel_carp_{eid}",
-                    )
-                    ca1, ca2 = st.columns(2)
-                    with ca1:
-                        if st.form_submit_button("Guardar", use_container_width=True):
-                            valor = "" if nuevo_año == "— Sin carpeta —" else nuevo_año
-                            asignar_carpeta(eid, valor)
-                            st.session_state.pop(f"form_carp_{eid}", None)
-                            st.rerun()
-                    with ca2:
-                        if st.form_submit_button("Cancelar", use_container_width=True):
-                            st.session_state.pop(f"form_carp_{eid}", None)
-                            st.rerun()
-
         # ── Vista previa ──
         if st.session_state.get(f"prev_e_{eid}", False):
             render_preview(fd, e["mime_type"], e["nombre_archivo"])
@@ -865,14 +815,14 @@ def tab_escritos():
             f"Presentados ({len(presentados)})",
         ])
         with tab_pend:
-            render_por_año(pendientes, False, False, puede_eliminar,
-                           "pendiente", "sol_pend", puede_asignar=True)
+            _ = [render_escrito(e, False, False, show_delete=puede_eliminar) for e in pendientes]
+            if not pendientes: _empty_state("Sin escritos pendientes")
         with tab_obs:
-            render_por_año(observados, False, False, puede_eliminar,
-                           "observado", "sol_obs", puede_asignar=True)
+            _ = [render_escrito(e, False, False, show_delete=puede_eliminar) for e in observados]
+            if not observados: _empty_state("Sin escritos observados")
         with tab_pres:
-            render_por_año(presentados, False, False, puede_eliminar,
-                           "presentado", "sol_pres", puede_asignar=True)
+            _ = [render_escrito(e, False, False, show_delete=puede_eliminar) for e in presentados]
+            if not presentados: _empty_state("Sin escritos presentados")
 
     else:
         # ── Vista Revisor ──
@@ -915,14 +865,14 @@ def tab_escritos():
             f"Presentados ({len(presentados)})",
         ])
         with tab_pend:
-            render_por_año(pendientes, True, True, False,
-                           "pendiente", "rev_pend")
+            _ = [render_escrito(e, True, True) for e in pendientes]
+            if not pendientes: _empty_state("Sin escritos pendientes")
         with tab_obs:
-            render_por_año(observados, True, False, False,
-                           "observado", "rev_obs")
+            _ = [render_escrito(e, True, False) for e in observados]
+            if not observados: _empty_state("Sin escritos observados")
         with tab_pres:
-            render_por_año(presentados, True, False, False,
-                           "presentado", "rev_pres")
+            _ = [render_escrito(e, True, False) for e in presentados]
+            if not presentados: _empty_state("Sin escritos presentados")
 
 
 # ─────────────────────────────────────────────
