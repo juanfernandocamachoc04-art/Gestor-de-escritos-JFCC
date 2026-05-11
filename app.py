@@ -577,9 +577,13 @@ def render_filtros(escritos: list, key_prefix: str) -> list:
 
     # Filtrar
     q = busqueda.strip().lower()
+    # Si el multiselect de autor tiene todos los disponibles (o está vacío por desfase de estado),
+    # no aplicar filtro de autor para evitar que escritos desaparezcan al recargar.
+    filtrar_autor = bool(autor_fil) and set(autor_fil) != set(autores_disp)
+    filtrar_anio  = bool(año_fil) and set(año_fil) != set(años_disp)
     result = [e for e in escritos
-              if e["creador_nombre"] in autor_fil
-              and (_get_año(e.get("num_expediente") or "") in año_fil if año_fil else True)
+              if (not filtrar_autor or e["creador_nombre"] in autor_fil)
+              and (not filtrar_anio or _get_año(e.get("num_expediente") or "") in año_fil)
               and (not q or
                    q in (e.get("num_expediente") or "").lower() or
                    q in (e.get("tipo_escrito") or "").lower() or
